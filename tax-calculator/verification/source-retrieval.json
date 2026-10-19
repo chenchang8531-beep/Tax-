@@ -1,0 +1,93 @@
+[
+  {
+    "title": "ATO resident tax rates",
+    "url": "https://www.ato.gov.au/tax-rates-and-codes/tax-rates-australian-residents",
+    "supports": "Resident progressive tax brackets; FY2025–26 16/30/37/45 percent, full threshold $18,200.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  },
+  {
+    "title": "ASIC Moneysmart income tax",
+    "url": "https://moneysmart.gov.au/work-and-tax/income-tax",
+    "supports": "Actual FY2025–26 income tax table; independent presentation of resident brackets.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  },
+  {
+    "title": "ATO LITO",
+    "url": "https://www.ato.gov.au/individuals-and-families/income-deductions-offsets-and-records/tax-offsets/low-income-tax-offset",
+    "supports": "LITO $700 through $37,500; 5% taper to $45,000; $325 then 1.5% taper.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  },
+  {
+    "title": "ATO about tax offsets",
+    "url": "https://www.ato.gov.au/individuals-and-families/income-deductions-offsets-and-records/tax-offsets/about-tax-offsets",
+    "supports": "Offsets reduce tax payable; LITO is non-refundable and does not offset Medicare.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  },
+  {
+    "title": "ATO Medicare low income",
+    "url": "https://www.ato.gov.au/individuals-and-families/medicare-and-private-health-insurance/medicare-levy/medicare-levy-reduction/medicare-levy-reduction-for-low-income-earners",
+    "supports": "2025–26 Medicare reduction; $29,000 example gives $98.90.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  },
+  {
+    "title": "Medicare Levy Act compilation",
+    "url": "https://www.legislation.gov.au/C2004A03351/2026-07-01/2026-07-01/text/original/epub/OEBPS/document_1/document_1.html",
+    "supports": "Section 3 thresholds $28,011/$35,013; section 6 2%; section 7 phase-in.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  },
+  {
+    "title": "2026 amendment",
+    "url": "https://www.legislation.gov.au/C2026A00058/asmade/2026-06-30/text/original/epub/OEBPS/document_1/document_1.html",
+    "supports": "Schedule 5 item 14: application to 2025–26 and later.",
+    "attempt_date": "2026-10-19",
+    "exit_code": 56,
+    "http_status": "000",
+    "body_bytes": 0,
+    "page_excerpt": "",
+    "matched_excerpts": [],
+    "inspection": "not independently inspected: unavailable or blocked",
+    "stderr": "curl: (56) CONNECT tunnel failed, response 403\n"
+  }
+]

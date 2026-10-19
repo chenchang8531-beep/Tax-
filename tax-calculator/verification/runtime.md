@@ -1,0 +1,10 @@
+# Observed runtime and execution
+
+- Task: new user-authorized PERSONAL_CLOUD_DEV calculator development, 2026-10-19. Repository `chenchang8531-beep/Tax-` (public per existing README and task), sanitized native origin `https://github.com/chenchang8531-beep/Tax-.git`.
+- Native workspace `/workspace/Tax-`; selected managed Cloud runtime, Linux 6.18.55 x86_64/glibc 2.41. Node v24.19.0; Python 3.12.14; Git 2.52.0; installed worker Skill **0.3.4**, actually read through skills.read in this task. Worker required references were read in the same conversation. Separate native task ID/model/effort metadata is not exposed; not invented.
+- Fresh native remote main and fetched main both `c9f959fb61b33591b5ce3e247fdaf93fb42ac7b9`. Initial HEAD same; clean tree; existing README inspected. No applicable AGENTS.md or Start source found in prior bounded workspace search; this task does not depend on Start visibility.
+- Fresh exact remote branch lookup returned only main, no requested branch. Local exact branch lookup also absent. `git switch -c codex/tax-calculator-fy2026-20261019 FETCH_HEAD` created the feature branch from fresh main.
+- Network calls use current-turn `with_additional_permissions` with network enabled; existing HTTP(S) proxy and TLS verification preserved. No saved policy or proxy changes. No full-access mode. Native push dry run succeeded separately from native fetch, confirming write route readiness; no GitHub API fallback or credential inspection required.
+- Default-mode Chromium launch failed on restricted local sockets; the narrow current-turn grant allowed Chromium. Managed browser blocked file:// navigation; normal loopback HTTP navigation was supported without policy changes. Acceptance then ran offline on the built page.
+- Initial test-file creation used an incorrect relative path and produced no test files; corrected before acceptance. Only actual individual test receipts count. No empty/file-only result is treated as calculator test coverage.
+- No installs, external model API, customer data, secret handling, billing changes, PR, merge or deployment.

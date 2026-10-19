@@ -1,0 +1,85 @@
+
+> au-tax-calculator-fy2026@1.0.0 test
+> node --test --test-isolation=none test/*.test.mjs
+
+✔ independent fixture $0 (2.889235ms)
+✔ independent fixture $18201 (0.161791ms)
+✔ independent fixture $22575 (0.084318ms)
+✔ independent fixture $22576 (0.11382ms)
+✔ independent fixture $28011 (0.08956ms)
+✔ independent fixture $28012 (0.073969ms)
+✔ independent fixture $29000 (0.063985ms)
+✔ independent fixture $35013 (0.05352ms)
+✔ independent fixture $35014 (0.115141ms)
+✔ independent fixture $37500 (0.158408ms)
+✔ independent fixture $37501 (0.132353ms)
+✔ independent fixture $45000 (0.064662ms)
+✔ independent fixture $45001 (0.035029ms)
+✔ independent fixture $50000 (0.029869ms)
+✔ independent fixture $66666 (0.025601ms)
+✔ independent fixture $66667 (0.02647ms)
+✔ independent fixture $100000 (0.023893ms)
+✔ independent fixture $135000 (0.023304ms)
+✔ independent fixture $190000 (0.026479ms)
+✔ independent fixture $250000 (0.024805ms)
+✔ independent boundary $18199 (0.145857ms)
+✔ independent boundary $18200 (0.034364ms)
+✔ independent boundary $44999 (0.056933ms)
+✔ independent boundary $134999 (0.138347ms)
+✔ independent boundary $135001 (0.056657ms)
+✔ independent boundary $189999 (0.026938ms)
+✔ independent boundary $190001 (0.024135ms)
+✔ reject income  (string) (0.511969ms)
+✔ reject income   (string) (0.063998ms)
+✔ reject income -1 (string) (0.037291ms)
+✔ reject income -1 (number) (0.033244ms)
+✔ reject income 1.5 (number) (0.03794ms)
+✔ reject income 1.2 (string) (0.168091ms)
+✔ reject income 1.0 (string) (0.053413ms)
+✔ reject income 100,000 (string) (0.055609ms)
+✔ reject income 1e5 (string) (0.049991ms)
+✔ reject income 0x10 (string) (0.094964ms)
+✔ reject income Infinity (string) (0.040908ms)
+✔ reject income Infinity (number) (0.037919ms)
+✔ reject income NaN (number) (0.056024ms)
+✔ reject income NaN (string) (0.104438ms)
+✔ reject income null (object) (0.056914ms)
+✔ reject income undefined (undefined) (0.037368ms)
+✔ reject income [object Object] (object) (0.041515ms)
+✔ reject income  (object) (0.040316ms)
+✔ reject income true (boolean) (0.034835ms)
+✔ reject income +100 (string) (0.034788ms)
+✔ reject income 1_000 (string) (0.033537ms)
+✔ reject income １２３ (string) (0.06208ms)
+✔ reject income 1000000000000 (string) (0.03787ms)
+✔ whole dollars, leading zeros and surrounding whitespace accepted (0.056624ms)
+✔ blank PAYG differs from explicit zero (0.106179ms)
+✔ PAYG refund $2212 on $100k / $25k (0.069216ms)
+✔ PAYG exact and payable cents (0.074199ms)
+✔ reject PAYG -1 (string) (0.109209ms)
+✔ reject PAYG 1.001 (string) (0.039933ms)
+✔ reject PAYG 1e3 (string) (0.033945ms)
+✔ reject PAYG NaN (string) (0.037461ms)
+✔ reject PAYG NaN (number) (0.034788ms)
+✔ reject PAYG Infinity (number) (0.03469ms)
+✔ reject PAYG null (object) (0.030581ms)
+✔ reject PAYG [object Object] (object) (0.032232ms)
+✔ reject PAYG 1,000 (string) (0.071931ms)
+✔ reject PAYG .50 (string) (0.104361ms)
+✔ reject PAYG 1. (string) (0.036039ms)
+✔ half-cent LITO rounds up before cap; never offsets Medicare (0.071495ms)
+✔ monotonic total, integer cents and reconciliation: every dollar 0..300000 plus large values (174.401743ms)
+✔ built HTML exactly matches current sources with one embedded engine (11.736482ms)
+ℹ tests 68
+ℹ suites 0
+ℹ pass 68
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 207.364837
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

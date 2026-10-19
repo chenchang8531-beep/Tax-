@@ -1,0 +1,14 @@
+
+> au-tax-calculator-fy2026@1.0.0 test:browser
+> node test/browser.cjs
+
+PASS overflow 1440px: scrollWidth=1440, viewport=1440
+PASS overflow 390px: scrollWidth=390, viewport=390
+PASS overflow 320px: scrollWidth=320, viewport=320
+PASS browser: 30 checks; built HTML over loopback HTTP then offline; no external requests; no page errors; keyboard, invalid recovery, PAYG, print, desktop/mobile.
+Screenshots: /workspace/Tax-/tax-calculator/verification/screenshots/desktop.png and mobile.png
+npm notice
+npm notice New major version of npm available! 11.9.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

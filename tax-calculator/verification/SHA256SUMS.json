@@ -1,0 +1,78 @@
+{
+  "algorithm": "SHA-256",
+  "note": "All project files except this manifest. Rebuild index must match source; test logs contain actual observed timing.",
+  "files": {
+    "README.md": {
+      "bytes": 6308,
+      "sha256": "128fdfa8e132bda0b9f31cdf11402db5e14a5b017afcce3695990e2f94e07727"
+    },
+    "SOURCES.md": {
+      "bytes": 2833,
+      "sha256": "6e3edf5ad96b0256735fbd9a7228f3f962efffac18c001093d3e3752592c60d7"
+    },
+    "build.mjs": {
+      "bytes": 910,
+      "sha256": "aaf81a65fe11864a9cc12f488dedc1362fd72b0debbe5f469b60d7c8b4e2dceb"
+    },
+    "index.html": {
+      "bytes": 17154,
+      "sha256": "aa4dd3f855d9588f69a3ee13fc490ca4f608e2d7b1a8b253db702fa55908f03a"
+    },
+    "package.json": {
+      "bytes": 246,
+      "sha256": "497285af38cb471e795e2170ea609b169ad63a7f3a3a6b391f94a518e354d639"
+    },
+    "src/model.mjs": {
+      "bytes": 2872,
+      "sha256": "ed0e7cba7625b0870776d229cb54d8fb56fde9b8339c8f2851b23363c23a8af7"
+    },
+    "src/style.css": {
+      "bytes": 5271,
+      "sha256": "266ccb3ad9931fd3a1d76577f230a7f1ccad185edd16bd7e73ecc8bb79cf2130"
+    },
+    "src/template.html": {
+      "bytes": 6923,
+      "sha256": "1d859ce040f6803c3f723865c6f798d63208fbc4db9d23448dd1cfb45a396e85"
+    },
+    "src/ui.js": {
+      "bytes": 2142,
+      "sha256": "4b9a60e3a57b63c542205db4151778c89eaf5c5920cefd69543609819dcabe30"
+    },
+    "test/browser.cjs": {
+      "bytes": 4586,
+      "sha256": "c35429dbb75374799c5b81d3928835f7001dad6410f970215024f40ab4945a58"
+    },
+    "test/model.test.mjs": {
+      "bytes": 4966,
+      "sha256": "42fade27f7b264ce8b3ee44f4b3deb2dcab3d8437c8401fa3df55d33694fb2a7"
+    },
+    "verification/browser-tests.txt": {
+      "bytes": 696,
+      "sha256": "c583025bf8c15c5b179557445b9a25414f67b436d50a04e20fbeb3e8d0a45f52"
+    },
+    "verification/build.txt": {
+      "bytes": 132,
+      "sha256": "931cdba8423b26167312f73bdcfe68c67ee536aa1e8426633d9ec6fc754456f5"
+    },
+    "verification/runtime.md": {
+      "bytes": 2096,
+      "sha256": "a7e5a8cb91f9835f1f93d509f6b32741eeb1a9862f6d18fa3151dcbf05b3f0a2"
+    },
+    "verification/screenshots/desktop.png": {
+      "bytes": 162562,
+      "sha256": "75c7c170607a7fb6b1b19859a03b7b3f56f506e2c425c9f8d3c13f585fa865fa"
+    },
+    "verification/screenshots/mobile.png": {
+      "bytes": 148289,
+      "sha256": "f813617e853fd7cb833d8e67d026c0b5502db86b027fb862da6eb8d3af64b541"
+    },
+    "verification/source-retrieval.json": {
+      "bytes": 3878,
+      "sha256": "afcf01a4880e20a10954cb7966997b1d1416d46a3607a37075b9fcfe7570dd27"
+    },
+    "verification/unit-tests.txt": {
+      "bytes": 3658,
+      "sha256": "4123549e77f7200f31dce05d16ffe14fda64f3b2318c49ea2a301d260b74d065"
+    }
+  }
+}
