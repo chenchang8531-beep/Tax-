@@ -1,0 +1,26 @@
+{
+  "schema": "cloud-roundtrip",
+  "version": 1,
+  "run_marker": "c2ae11b40a574f662f0f21137271150d",
+  "repository": "chenchang8531-beep/Tax-",
+  "source_main": "c9f959fb61b33591b5ce3e247fdaf93fb42ac7b9",
+  "cloud_head": "c9f959fb61b33591b5ce3e247fdaf93fb42ac7b9",
+  "runtime_versions": {
+    "git": "git version 2.52.0",
+    "python": "Python 3.12.14",
+    "node": "v24.19.0",
+    "npm": "11.9.0"
+  },
+  "skill_version": "0.3.4",
+  "test_outcomes": {
+    "runtime_readiness": "PASS",
+    "native_git_ls_remote": "PASS",
+    "https_proxy_connect": 200,
+    "https_status": 200,
+    "tls_verify_result": 0,
+    "correct_account_repository_commit_accepted": "PASS",
+    "incorrect_account_rejected": "PASS",
+    "incorrect_repository_rejected": "PASS",
+    "incorrect_commit_rejected": "PASS"
+  }
+}
