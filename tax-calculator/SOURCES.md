@@ -1,6 +1,8 @@
 # Sources and provenance
 
-Research supplied by user: reviewed 19 October 2026. Current runtime retrieval attempted 19 October 2026 using inherited managed proxy with TLS verification enabled. Supplied reviewed rules are the implementation authority; fetched excerpts do not constitute an independent tax/legal review. Where retrieval failed, there is no local-inspection claim. The model covers FY2025–26 only; later rates must not be substituted.
+The rules were researched against official sources by the supervising ChatGPT session and its tax-rule research agent on 2026-10-19, then supplied to this Cloud executor. They were not reviewed or authored by the human user. The parent session separately verified FY2025–26 rates, LITO and Medicare thresholds against ATO, ASIC Moneysmart and legislation. This is upstream provenance, not a claim of local source inspection.
+
+This Cloud executor attempted retrieval on 2026-10-19 using the inherited managed proxy with TLS verification enabled. Its own official-source fetches were denied with CONNECT 403 (HTTP destination status 000); none of these sources was locally opened. Supplied researched rules are the implementation authority. The model covers FY2025–26 only; later rates must not be substituted.
 
 The half-up component rounding is an explicit application estimate convention, NOT a verified ATO final-assessment rounding rule.
 

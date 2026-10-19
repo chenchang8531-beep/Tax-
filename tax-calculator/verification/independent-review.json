@@ -1,0 +1,102 @@
+{
+  "schema": "parent-session-independent-review",
+  "version": 1,
+  "review_date": "2026-10-19",
+  "reviewed_commit": "86fea117013ab512b7c74b3413b5e583837d4e30",
+  "evidence_origin": "PARENT_SESSION",
+  "truth_label": "reported",
+  "receipt_provenance": "Parent-session verification results supplied to this Cloud executor in the authorized documentation-update packet. These are not checks executed or independently reproduced in this Cloud workspace.",
+  "rule_research": {
+    "researchers": [
+      "supervising ChatGPT session",
+      "tax-rule research agent"
+    ],
+    "date": "2026-10-19",
+    "sources": [
+      "ATO",
+      "ASIC Moneysmart",
+      "Australian legislation"
+    ],
+    "verified_facts": [
+      "FY2025–26 resident income-tax rates",
+      "LITO",
+      "Medicare thresholds"
+    ],
+    "human_user_authored_or_reviewed_rules": false,
+    "cloud_executor_source_fetches": "Denied with CONNECT 403; no local official-source inspection claimed",
+    "rounding": "Explicit application estimate convention; not a verified ATO final-assessment rounding rule"
+  },
+  "parent_manifest_verification": {
+    "immutable_commit": "86fea117013ab512b7c74b3413b5e583837d4e30",
+    "entries_fetched_via_github": 18,
+    "entries_verified": 18,
+    "checks": [
+      "byte count",
+      "SHA-256",
+      "Git blob SHA-1"
+    ]
+  },
+  "separate_reviewer": {
+    "actual_materials_read": [
+      "source",
+      "UI",
+      "build",
+      "tests",
+      "docs"
+    ],
+    "execution_target": "Actual exported model",
+    "oracle": {
+      "type": "independently prepared Python Decimal oracle",
+      "prepared_before_source_retrieval": true,
+      "sha256": "f9850c5572414b63a1aa65af648e0798dc884d53ec1e91819367375b4b59e6f8",
+      "location": "external parent test input",
+      "bundled_here": false,
+      "contents": "Not supplied to this Cloud executor; no contents inferred"
+    },
+    "results": {
+      "oracle_cases": {
+        "passed": 234,
+        "total": 234
+      },
+      "component_comparisons": {
+        "passed": 1404,
+        "total": 1404
+      },
+      "payg_cases": {
+        "passed": 10,
+        "total": 10
+      },
+      "invalid_taxable_income_cases": {
+        "passed": 22,
+        "total": 22
+      },
+      "invalid_payg_cases": {
+        "passed": 15,
+        "total": 15
+      },
+      "capped_lito": "PASS",
+      "maximum_safe_integer_cases": "PASS"
+    },
+    "finding": "No tax/model or UI-source defect found within declared scope"
+  },
+  "parent_npm_test_rerun": {
+    "passed": 68,
+    "total": 68,
+    "exit_code": 0,
+    "skipped": 0
+  },
+  "parent_visual_review": {
+    "actual_committed_desktop_png": "inspected",
+    "actual_committed_mobile_png": "inspected",
+    "independent_browser_automation_rerun": false
+  },
+  "reviewed_sha256": {
+    "src/model.mjs": "ed0e7cba7625b0870776d229cb54d8fb56fde9b8339c8f2851b23363c23a8af7",
+    "src/ui.js": "4b9a60e3a57b63c542205db4151778c89eaf5c5920cefd69543609819dcabe30",
+    "index.html": "aa4dd3f855d9588f69a3ee13fc490ca4f608e2d7b1a8b253db702fa55908f03a"
+  },
+  "cloud_docs_update": {
+    "test_suites_rerun": false,
+    "reason": "Documentation/evidence-only update; model, UI, build, tests and screenshots preserved byte-for-byte"
+  }
+}

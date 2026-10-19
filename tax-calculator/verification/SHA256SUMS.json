@@ -1,14 +1,14 @@
 {
   "algorithm": "SHA-256",
-  "note": "All project files except this manifest. Rebuild index must match source; test logs contain actual observed timing.",
+  "note": "All project files except this manifest. Parent review receipt is reported upstream evidence; Cloud workspace checks remain distinct.",
   "files": {
     "README.md": {
-      "bytes": 6308,
-      "sha256": "128fdfa8e132bda0b9f31cdf11402db5e14a5b017afcce3695990e2f94e07727"
+      "bytes": 7168,
+      "sha256": "f97aa7ed00e909e99daeee087bf56460149f5d4f03fd8409ad2036fb1f1e0626"
     },
     "SOURCES.md": {
-      "bytes": 2833,
-      "sha256": "6e3edf5ad96b0256735fbd9a7228f3f962efffac18c001093d3e3752592c60d7"
+      "bytes": 3222,
+      "sha256": "4d574e3111726d6adc67fbe9941b730e79afc6db6f90f21ba9483cd45e6af517"
     },
     "build.mjs": {
       "bytes": 910,
@@ -53,6 +53,10 @@
     "verification/build.txt": {
       "bytes": 132,
       "sha256": "931cdba8423b26167312f73bdcfe68c67ee536aa1e8426633d9ec6fc754456f5"
+    },
+    "verification/independent-review.json": {
+      "bytes": 3242,
+      "sha256": "748e91f3492a3fb541ff813b080326fdf2a5f0c7ca726cd9917b3324953fa809"
     },
     "verification/runtime.md": {
       "bytes": 2096,
