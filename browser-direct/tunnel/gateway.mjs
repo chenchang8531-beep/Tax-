@@ -72,5 +72,5 @@ export function createGateway({frontendToken,agentToken,agentId,localTests=false
 if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
  const opts={frontendToken:process.env.LIMING_GATEWAY_FRONTEND_TOKEN,agentToken:process.env.LIMING_GATEWAY_AGENT_TOKEN,agentId:process.env.LIMING_GATEWAY_AGENT_ID,localTests:false};
  const server=createGateway(opts);
- server.listen().then(addr=>console.log(JSON.stringify({service:'liming-browser-reverse-gateway',version:'0.3.1',bound:addr.address,port:addr.port,transport:'HTTPS_TERMINATED_BY_TRUSTED_PROXY'}))).catch(e=>{console.error('GATEWAY_FAILED '+e.message);process.exitCode=1;});
+ server.listen().then(addr=>console.log(JSON.stringify({service:'liming-browser-reverse-gateway',version:'0.4.0',bound:addr.address,port:addr.port,transport:'HTTPS_TERMINATED_BY_TRUSTED_PROXY'}))).catch(e=>{console.error('GATEWAY_FAILED '+e.message);process.exitCode=1;});
 }

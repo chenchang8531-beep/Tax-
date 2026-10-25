@@ -1,6 +1,6 @@
 {
   "name": "liming-browser-direct-runtime",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,10 +9,10 @@
   "scripts": {
     "test": "node --test test/*.test.mjs ../tunnel/test/*.test.mjs",
     "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test test/*.test.mjs ../tunnel/test/*.test.mjs",
-    "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs test/attestation.test.mjs test/persistence.test.mjs ../tunnel/test/reverse-tunnel.test.mjs",
+    "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs test/attestation.test.mjs test/persistence.test.mjs test/task-tabs.test.mjs ../tunnel/test/reverse-tunnel.test.mjs",
     "start": "node src/mcp-server.mjs",
     "start:gateway": "node ../tunnel/gateway.mjs",
     "start:agent": "node ../tunnel/agent.mjs"
   },
-  "description": "Local loopback browser MCP + separate outbound reverse-tunnel client and HTTPS-edge gateway; Node >=22.5; zero third-party runtime dependencies"
+  "description": "Per-client per-FY per-form owned Chrome Tab task lifecycle, outbound reverse tunnel, fast scoped UI entry and exception-only identity revalidation"
 }

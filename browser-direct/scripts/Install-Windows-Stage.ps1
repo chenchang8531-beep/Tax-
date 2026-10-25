@@ -2,11 +2,11 @@
 param(
  [Parameter(Mandatory=$true)][string]$ZipPath,
  [string]$Root=(Join-Path $env:LOCALAPPDATA 'LimingBrowserDirect'),
- [string]$Version='0.3.1'
+ [string]$Version='0.4.0'
 )
 $ErrorActionPreference='Stop'
 if(!(Test-Path -LiteralPath $ZipPath -PathType Leaf)){throw 'ZIP_NOT_FOUND'}
-if($Version -ne '0.3.1'){throw 'VERSION_MISMATCH'}
+if($Version -ne '0.4.0'){throw 'VERSION_MISMATCH'}
 $versions=Join-Path $Root 'versions';$target=Join-Path $versions ('v'+$Version)
 if(Test-Path -LiteralPath $target){throw 'EXISTING_VERSION_NOT_OVERWRITTEN'}
 $staging=Join-Path $Root ('staging_'+[guid]::NewGuid().ToString('N'))

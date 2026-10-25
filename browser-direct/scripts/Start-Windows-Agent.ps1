@@ -3,7 +3,7 @@ param(
  [Parameter(Mandatory=$true)][string]$GatewayUrl,
  [Parameter(Mandatory=$true)][string]$AgentId,
  [string]$Root=(Join-Path $env:LOCALAPPDATA 'LimingBrowserDirect'),
- [string]$Version='0.3.1'
+ [string]$Version='0.4.0'
 )
 $ErrorActionPreference='Stop'
 if(-not $GatewayUrl.StartsWith('https://')){throw 'GATEWAY_HTTPS_REQUIRED'}

@@ -1,25 +1,18 @@
-# Liming Browser Direct v0.3.1 — Full source model
+# Liming Browser Direct v0.4.0 — multi-client isolated Chrome Xero task controller
 
-A **single existing Liming Executive** controls a private Windows Chrome Xero workspace via a separately installed CDP actuator and an independently authenticated outbound reverse tunnel. The transport has **no AI planner** and never edits tax rules. Existing Xero Tax, Accounting and Payroll Skills retain source-backed tax/accounting decisions. **This is real executable source, not proof of a connected Live Xero browser.**
+One Liming frontend controls dedicated task-owned Chrome Tabs through local `127.0.0.1:9222` CDP, standalone Windows MCP on `127.0.0.1:59422`, outbound Windows Agent and private HTTPS Gateway. Source and installed private Plugin do not themselves prove that the runtime connection exists.
 
-## Three executable components
+## Exact first bind, uninterrupted fast work, final verify
 
-1. **Windows Controller:** `runtime/src/mcp-server.mjs` listens **127.0.0.1:59422**, exposes 8 MCP tools (`status`, `tabs`, `bind`, `observe`, `act`, `fill_fields`, `verify_saved`, `release`) and drives Chrome's local `127.0.0.1:9222` CDP. Current Chrome owner PID and exact `--user-data-dir` / optional `--profile-directory` are rechecked from Windows OS **for every write**. A copied `PROFILE_ATTESTED=1` variable cannot grant control.
-2. **Windows Outbound Agent:** `tunnel/agent.mjs` polls a private HTTPS gateway and forwards one request to the loopback MCP server. It retries **result posting only**; a possibly executed browser action is never replayed blindly.
-3. **Cloud Gateway:** `tunnel/gateway.mjs` is a small, stateless-in-persistence request broker. Run a single instance behind a trusted TLS-terminating proxy with distinct frontend and agent secrets and exact agent ID. It does **not** expose Chrome CDP or any filesystem. In-memory pending requests are lost on restart and must be reconciled with the durable local action WAL, not replayed.
+**User requirement:** do not fully verify customer identity on each step. `browser_task_open` creates a **new** tab for the exact client, legal entity, FY, return type, Xero organisation and unique return ID; `browser_task_bind` checks those five independent visible/URL anchors **once**. During a normal uninterrupted workflow, the controller uses its own Tab ID, document/return URL fingerprint, and event-driven DOM identity watcher, while verifying each entered value without expensive repeated client checks. On interruption, Chrome tab/route replacement, client DOM takeover, error, user correction or restart, `browser_task_resume`/`browser_task_recover` demands full revalidation. After a verified Save/reload, `browser_task_finish` confirms identity and values **once at the end**, then closes **only its own** tab.
 
-## Expected workflow
+## Components
 
-`ChatGPT frontend + existing tax Skills -> connected private MCP plugin -> HTTPS Gateway -> Windows outbound agent -> loopback MCP -> Chrome CDP:9222 -> Xero Draft -> exact readback after Save/reload`.
+- `runtime/src/controller.mjs`, `runtime/src/task-tabs.mjs`, `runtime/src/cdp-browser.mjs`: controlled CDP action engine, new-tab lifecycle, per-client/FY/form ownership, durable anti-duplicate lease, fast 1–12 field batch fill, no blind write retry, owner/session consistency and final verification.
+- `runtime/src/mcp-server.mjs`: local authenticated JSON-RPC MCP endpoints (legacy unowned bind blocked in production). Requires independent Windows Chrome owner/profile attestation at task start, exception recovery and final completion, not per field. Dedicated per-task journal and action WAL.
+- `tunnel/agent.mjs`, `tunnel/gateway.mjs`: independently authenticated outbound reverse HTTPS long poll; separate frontend and agent secrets, no published CDP, no client-data persistence in gateway.
+- `scripts/`: isolated Windows version staging, local DPAPI secret handling, read-only process check, server/agent startup. Existing CCOS is not overwritten.
 
-The controller acts only on explicit frontend instructions. One batch accepts 1–12 exact selected fields in one CDP connection. It validates a fresh page revision and 2+ exact source/target anchors, blocks high-risk controls/credentials/form Enter submission, does not automatically submit or lodge, and verifies every input twice. `FIELD_VALUES_VERIFIED_UNSAVED` is not a saved Draft. A separate `browser_verify_saved` command requires an observed same-session Save action then reloads and checks persisted field values. Uncertain outcomes and mismatches stop instead of restarting the action.
+See `docs/TAB_TASK_BINDING.md` for exact tools, identity policy, concurrent client isolation and exception routing. `docs/INSTALL_WINDOWS.md`, `docs/TUNNEL_DEPLOY.md`, `docs/VERIFICATION.md` give installation, test and Live gates.
 
-## Install and security boundary
-
-- Run tests: from `runtime/` use `npm test` and `npm run test:coverage` (no install; Node 22+). Linux Chromium E2E uses **a separate synthetic browser**, never the user's :9222 process.
-- Stage side-by-side on Windows with `scripts/Install-Windows-Stage.ps1`, verify hash manifest and use `scripts/Start-Windows-Controller.ps1` after identifying the exact intended Chrome; no existing CCOS installation is overwritten.
-- Deploy the `tunnel/Dockerfile` container to a trusted private HTTPS cloud endpoint with two **different** secrets. Run `scripts/Save-Windows-Agent-Token.ps1` and `scripts/Start-Windows-Agent.ps1` after authenticating that endpoint. The public GitHub branch contains no secrets.
-- Bind the actual HTTPS URL and private host-side Bearer credentials to the **same** Workspace plugin ID. Root `mcp.json` intentionally remains `mcpServers={}` until that authenticated deployment is verified; source publication alone cannot create host MCP tools.
-- Use only an explicit Xero Draft/client/period scope after actual frontend tool exposure. No automatic Save/Lodge/Submit/Send/Pay/Sign/Delete, no credential/MFA handling and no uncontrolled page automation.
-
-Read `docs/INSTALL_WINDOWS.md`, `docs/TUNNEL_DEPLOY.md`, `docs/VERIFICATION.md`, and `docs/CONTINUATION.json` for exact gates, rollback and outstanding reality evidence. This does not create another Agent, re-pair existing CCOS, or grant new authority.
+**Source tests and GitHub CI are not proof of a current Windows :9222 owner/profile, installed Server, connected private Tunnel, host MCP tool exposure, or real Xero Draft persistence.** The plugin never grants tax/legal authority and blocks Lodge/Submit/Send/Pay/Sign/Delete, credentials and MFA. The Xero Tax/Accounting/Payroll Skills remain the professional owners.

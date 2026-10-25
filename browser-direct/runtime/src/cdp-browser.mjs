@@ -44,6 +44,7 @@ function nodeTargetScript(action){
   const selector=action.selector?JSON.stringify(action.selector):'null';
   const x=Number.isFinite(action.x)?action.x:'null';const y=Number.isFinite(action.y)?action.y:'null';
   return `(() => {
+   if(window.__limingTabIdentityGuard?.dirty)return {error:'TASK_REVALIDATION_REQUIRED'};
    let el;try { if(${selector}){const matches=[...document.querySelectorAll(${selector})];if(matches.length!==1)return {error:'AMBIGUOUS_TARGET'};el=matches[0];}else el=document.elementFromPoint(${x},${y}); }catch(e){return {error:'INVALID_SELECTOR'}}
    if(!el) return {error:'TARGET_NOT_FOUND'};
    el=el.closest('button,a,input,textarea,select,[role="button"],[role="link"],[role="menuitem"],[role="option"],[contenteditable],label')||el;
@@ -84,9 +85,10 @@ const fieldScript=selector=>`(() => {
   const label=String(el.getAttribute('aria-label')||el.labels?.[0]?.innerText||el.getAttribute('placeholder')||'').slice(0,160);
   const value=sensitive ? null : (el.isContentEditable?String(el.textContent||''):String(el.value??''));
   return {count:1,exists:true,visible,enabled:!el.disabled,readOnly:Boolean(el.readOnly),editable,tag,type,label,value,
-      x:r.x+r.width/2,y:r.y+r.height/2};
+      x:r.x+r.width/2,y:r.y+r.height/2,url:location.href,documentToken:performance.timeOrigin,guardInstalled:Boolean(window.__limingTabIdentityGuard),guardDirty:Boolean(window.__limingTabIdentityGuard?.dirty)};
 })()`;
 const focusScript=selector=>`(() => {
+  if(window.__limingTabIdentityGuard?.dirty)return {ok:false,code:'TASK_REVALIDATION_REQUIRED'};
   let found;try{found=[...document.querySelectorAll(${JSON.stringify(selector)})];}catch{return {ok:false,code:'INVALID_SELECTOR'}}
   if(found.length!==1)return {ok:false,code:'AMBIGUOUS_FIELD'};
   const el=found[0],tag=el.tagName;
@@ -108,6 +110,47 @@ export class ChromeCDPBrowser {
   async fetchJson(path){const r=await fetch(`${this.base}${path}`,{signal:AbortSignal.timeout(5000)});
     if(!r.ok)throw new ControlError('CDP_UNAVAILABLE',`CDP HTTP returned ${r.status}`,502);return r.json();}
   async tabs(){const tabs=await this.fetchJson('/json/list');return tabs.filter(t=>t.type==='page').map(t=>({id:t.id,title:t.title,url:t.url}));}
+  async createTab(address){
+    if(!allowedUrl(address,{localTests:this.localTests}))throw new ControlError('ORIGIN_BLOCKED','New tab must start on an approved Xero URL',403);
+    // Chrome DevTools HTTP interface requires PUT for /json/new. Never act on an existing tab.
+    const response=await fetch(`${this.base}/json/new?${encodeURIComponent(address)}`,{method:'PUT',signal:AbortSignal.timeout(9000)});
+    if(!response.ok)throw new ControlError('TAB_CREATION_FAILED',`Chrome refused new tab: ${response.status}`,502);
+    const created=await response.json();
+    if(created.type!=='page'||typeof created.id!=='string'||created.id.length>120)throw new ControlError('TAB_CREATION_UNCERTAIN','New Chrome target ID was not returned',502);
+    return {id:created.id,url:created.url||address};
+  }
+  async closeTab(tabId){
+    const current=await this.tabs();
+    if(!current.some(x=>x.id===tabId))throw new ControlError('TAB_MISSING','Owned Chrome target no longer exists; closure not proven',409);
+    const response=await fetch(`${this.base}/json/close/${encodeURIComponent(tabId)}`,{signal:AbortSignal.timeout(7000)});
+    if(!response.ok)throw new ControlError('TAB_CLOSE_UNCERTAIN',`Chrome did not confirm owned tab closing: ${response.status}`,502);
+    for(let i=0;i<15;i++){
+      if(!(await this.tabs()).some(x=>x.id===tabId))return {closed:true,tabId};
+      await new Promise(r=>setTimeout(r,75));
+    }
+    throw new ControlError('TAB_CLOSE_UNCERTAIN','Chrome target still exists after close command',502);
+  }
+  async lightweightProbe(tabId){return this.withTab(tabId,c=>this.lightweightProbeOn(c));}
+  async installIdentityGuard(tabId,anchors){return this.withTab(tabId,c=>this.installIdentityGuardOn(c,anchors));}
+  async installIdentityGuardOn(c,anchors){
+    await this.assertOrigin(c);
+    if(!Array.isArray(anchors)||anchors.length<4||anchors.length>6)throw new ControlError('TASK_ANCHORS_REQUIRED','Four independent guards required');
+    const code=`(() => {
+      if(window.__limingTabIdentityGuard?.observer)window.__limingTabIdentityGuard.observer.disconnect();
+      const anchors=${JSON.stringify(anchors)}.map(x=>String(x).toLocaleLowerCase());
+      const guard={dirty:false,identityLost:false,observer:null};
+      const matches=()=>{const text=String(document.body?.innerText||'').toLocaleLowerCase();return anchors.every(a=>text.includes(a));};
+      if(!matches())return {installed:false,reason:'ANCHORS_MISSING'};
+      guard.observer=new MutationObserver(()=>{if(!matches()){guard.dirty=true;guard.identityLost=true;}});
+      guard.observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
+      Object.defineProperty(window,'__limingTabIdentityGuard',{value:guard,configurable:true,writable:false});
+      return {installed:true,dirty:guard.dirty};
+    })()`;
+    const result=await this.evaluate(c,code);
+    if(!result?.installed||result.dirty)throw new ControlError('TASK_GUARD_UNAVAILABLE','Browser identity guard could not install on bound form',409);
+    return result;
+  }
+  async lightweightProbeOn(c){await this.assertOrigin(c);return this.evaluate(c,'({url:location.href,documentToken:performance.timeOrigin,readyState:document.readyState,guardInstalled:Boolean(window.__limingTabIdentityGuard),guardDirty:Boolean(window.__limingTabIdentityGuard?.dirty)})');}
   async withTab(tabId,fn){
     const tabs=await this.fetchJson('/json/list');const tab=tabs.find(t=>t.type==='page'&&t.id===tabId);
     if(!tab?.webSocketDebuggerUrl)throw new ControlError('TAB_MISSING','Chrome CDP tab missing',404);
@@ -186,7 +229,7 @@ export class ChromeCDPBrowser {
     }
   }
   async transaction(tabId,fn){return this.withTab(tabId,async c=>fn({
-    observe:()=>this.observeOn(c),describeTarget:a=>this.describeTargetOn(c,a),readField:s=>this.readFieldOn(c,s),reload:()=>this.reloadOn(c),
+    observe:()=>this.observeOn(c),lightweightProbe:()=>this.lightweightProbeOn(c),describeTarget:a=>this.describeTargetOn(c,a),readField:s=>this.readFieldOn(c,s),reload:()=>this.reloadOn(c),
     setField:(f,m)=>this.setFieldOn(c,f,m),perform:(a,el)=>this.performOn(c,a,el)
   }));}
   async reloadOn(c){

@@ -1,4 +1,4 @@
-# Independent HTTPS reverse Tunnel — deployable v0.3.1 source
+# Independent HTTPS reverse Tunnel — deployable v0.4.0 source
 
 ## Security design
 
@@ -8,7 +8,7 @@ Three different secrets and identities are used: `LIMING_GATEWAY_FRONTEND_TOKEN`
 
 ## Server deployment
 
-Build the container from this package root: `docker build -f tunnel/Dockerfile -t liming-browser-gateway:0.3.1 .`. Supply secrets through the provider's secret manager. Set gateway listener to one replica, port 8080, with an HTTPS-terminating **trusted reverse proxy** that correctly sets `X-Forwarded-Proto: https` and restricts direct backend connections. The gateway requires that header in production and independently verifies Bearer credentials. It does not create TLS certificates by itself. Its `/healthz` is liveness only, `/status` is token-protected agent connectivity, and `/mcp` is token-protected stateless MCP JSON-RPC. Ensure the hosting provider supports persistent long-lived HTTP requests or use a provider with 30-second request allowances.
+Build the container from this package root: `docker build -f tunnel/Dockerfile -t liming-browser-gateway:0.4.0 .`. Supply secrets through the provider's secret manager. Set gateway listener to one replica, port 8080, with an HTTPS-terminating **trusted reverse proxy** that correctly sets `X-Forwarded-Proto: https` and restricts direct backend connections. The gateway requires that header in production and independently verifies Bearer credentials. It does not create TLS certificates by itself. Its `/healthz` is liveness only, `/status` is token-protected agent connectivity, and `/mcp` is token-protected stateless MCP JSON-RPC. Ensure the hosting provider supports persistent long-lived HTTP requests or use a provider with 30-second request allowances.
 
 ## Endpoint binding
 

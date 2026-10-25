@@ -4,20 +4,34 @@ import {resolve} from 'node:path';
 import { ChromeCDPBrowser } from './cdp-browser.mjs';
 import { BrowserController } from './controller.mjs';
 import { DurableActionLedger } from './ledger.mjs';
+import { DurableTaskRegistry } from './task-tabs.mjs';
 import { HostAttestationGate } from './host-attestation.mjs';
 import { ControlError, constantTimeTokenMatch } from './safety.mjs';
 
 const obj={type:'object',additionalProperties:false};
+const managedTaskScope={type:'object',required:['project','clientRef','legalEntityRef','entity','entityType','fy','period','formType','matter','xeroOrgRef','xeroOrgLabel','returnRef'],properties:Object.fromEntries(['project','clientRef','legalEntityRef','entity','entityType','fy','period','formType','matter','xeroOrgRef','xeroOrgLabel','returnRef'].map(k=>[k,{type:'string'}])),additionalProperties:false};
+const taskAnchors={type:'object',required:['client','year','form','organization','returnRef'],properties:Object.fromEntries(['client','year','form','organization','returnRef'].map(k=>[k,{type:'string'}])),additionalProperties:false};
+const expectedFields={type:'array',minItems:1,maxItems:12,items:{type:'object',required:['selector','text'],properties:{selector:{type:'string'},text:{type:'string'}},additionalProperties:false}};
 const requiredScope={type:'object',required:['project','entity','period','matter'],properties:{project:{type:'string'},entity:{type:'string'},period:{type:'string'},matter:{type:'string'}},additionalProperties:false};
 const expectedPoststate={type:'object',properties:{url:{type:'string'},visibleTextIncludes:{type:'array',items:{type:'string'}},visibleTextExcludes:{type:'array',items:{type:'string'}},controlsIncludeLabel:{type:'array',items:{type:'string'}}},additionalProperties:false};
 const action={type:'object',required:['kind'],properties:{kind:{type:'string',enum:['click','double_click','hover','drag','type','scroll','press','select','wait','navigate']},selector:{type:'string'},x:{type:'number'},y:{type:'number'},toX:{type:'number'},toY:{type:'number'},text:{type:'string'},value:{type:'string'},key:{type:'string'},deltaY:{type:'number'},deltaX:{type:'number'},ms:{type:'integer'},url:{type:'string'}},additionalProperties:false};
 export const TOOLS=[
+ {name:'browser_task_open',description:'Create a NEW owned Xero Chrome tab for exact client/reference, entity, FY, form, organisation and unique return. No tab reuse or automatic form entry.',inputSchema:{...obj,required:['scope','startUrl'],properties:{scope:managedTaskScope,startUrl:{type:'string'}}}},
+ {name:'browser_task_navigate',description:'Idempotently navigate ONLY the newly created unbound tab to an authorised Xero URL before binding.',inputSchema:{...obj,required:['taskId','url','idempotencyKey'],properties:{taskId:{type:'string'},url:{type:'string'},idempotencyKey:{type:'string'}}}},
+ {name:'browser_task_prepare',description:'Before initial form binding, allow only read/navigation (Xero link, URL navigation, wait or scroll); forbid form inputs and buttons.',inputSchema:{...obj,required:['taskId','idempotencyKey','action'],properties:{taskId:{type:'string'},idempotencyKey:{type:'string'},action}}},
+ {name:'browser_task_bind',description:'ONE full initial check of client, FY, form, organisation, unique Xero return; bind owned tab and create session.',inputSchema:{...obj,required:['taskId','anchors'],properties:{taskId:{type:'string'},anchors:taskAnchors}}},
+ {name:'browser_task_list',description:'Only own task IDs, tab IDs, ownership and hashed scope states; never expose client values.',inputSchema:{...obj,properties:{}}},
+ {name:'browser_task_pause',description:'Pause one task without closing tab or editing fields; requires identity revalidation before resume.',inputSchema:{...obj,required:['taskId'],properties:{taskId:{type:'string'},reason:{type:'string'}}}},
+ {name:'browser_task_resume',description:'Recheck full identity ONLY after pause, unexpected navigation, error, tab drift or interruption.',inputSchema:{...obj,required:['taskId','anchors'],properties:{taskId:{type:'string'},anchors:taskAnchors}}},
+ {name:'browser_task_recover',description:'After process restart, recover only an exact pre-journaled, still-open plugin-created Chrome target and scope; full revalidation.',inputSchema:{...obj,required:['taskId','scope','anchors'],properties:{taskId:{type:'string'},scope:managedTaskScope,anchors:taskAnchors}}},
+ {name:'browser_task_finish',description:'ONE final identity check, saved/reloaded field-value audit and optional automatic closure of ONLY this task-owned tab. Reject unsaved, stale or ambiguous work.',inputSchema:{...obj,required:['taskId','expectedFields'],properties:{taskId:{type:'string'},expectedFields,closeTab:{type:'boolean'}}}},
+ {name:'browser_task_close',description:'Close ONLY an owned tab after verified finalisation (or an untouched unbound tab). Never close other client tabs.',inputSchema:{...obj,required:['taskId'],properties:{taskId:{type:'string'}}}},
  {name:'browser_status',description:'Read the local browser controller readiness and profile attestation; never assert tunnel or Xero success.',inputSchema:{...obj,properties:{}}},
  {name:'browser_tabs',description:'List allowed Xero tabs only; no mutation.',inputSchema:{...obj,properties:{}}},
  {name:'browser_bind',description:'Bind exact client/entity/period/matter and 2+ observed page anchors to a browser tab. Read-only; issues a short-lived session.',inputSchema:{...obj,required:['tabId','scope','anchors'],properties:{tabId:{type:'string'},scope:requiredScope,anchors:{type:'array',minItems:2,maxItems:6,items:{type:'string'}}}}},
  {name:'browser_observe',description:'Read current visible controls, text, page hash and optionally screenshot. Requires prior bind.',inputSchema:{...obj,required:['sessionId'],properties:{sessionId:{type:'string'},screenshot:{type:'boolean'}}}},
- {name:'browser_act',description:'Execute exactly one frontend-specified Chrome action with current page revision and idempotency; never auto-plan. Irreversible controls are blocked.',inputSchema:{...obj,required:['sessionId','expectedRevision','idempotencyKey','action'],properties:{sessionId:{type:'string'},expectedRevision:{type:'string'},idempotencyKey:{type:'string'},action,expectedPoststate}}},
- {name:'browser_fill_fields',description:'Fast, same-CDP-connection sequential entry for up to 12 frontend-specified fields. Exact per-field value readback, bounded fallback only if initial input unchanged. Never claims Xero Draft saved.',inputSchema:{...obj,required:['sessionId','expectedRevision','idempotencyKey','fields'],properties:{sessionId:{type:'string'},expectedRevision:{type:'string'},idempotencyKey:{type:'string'},fields:{type:'array',minItems:1,maxItems:12,items:{type:'object',required:['selector','text'],properties:{selector:{type:'string'},text:{type:'string',maxLength:4096},fallbackSelector:{type:'string'},expectedLabel:{type:'string'}},additionalProperties:false}}}}},
+ {name:'browser_act',description:'Execute exactly one frontend-specified Chrome action with current page revision and idempotency; never auto-plan. Irreversible controls are blocked.',inputSchema:{...obj,required:['sessionId','idempotencyKey','action'],properties:{sessionId:{type:'string'},expectedRevision:{type:'string'},idempotencyKey:{type:'string'},action,expectedPoststate}}},
+ {name:'browser_fill_fields',description:'Fast, same-CDP-connection sequential entry for up to 12 frontend-specified fields. Exact per-field value readback, bounded fallback only if initial input unchanged. Never claims Xero Draft saved.',inputSchema:{...obj,required:['sessionId','idempotencyKey','fields'],properties:{sessionId:{type:'string'},expectedRevision:{type:'string'},idempotencyKey:{type:'string'},fields:{type:'array',minItems:1,maxItems:12,items:{type:'object',required:['selector','text'],properties:{selector:{type:'string'},text:{type:'string',maxLength:4096},fallbackSelector:{type:'string'},expectedLabel:{type:'string'}},additionalProperties:false}}}}},
  {name:'browser_verify_saved',description:'After a verified same-session Save action, reload exact tab and independently compare persisted fields. Never performs Save or Lodge.',inputSchema:{...obj,required:['sessionId','expectedRevision','idempotencyKey','saveActionKey','fields'],properties:{sessionId:{type:'string'},expectedRevision:{type:'string'},idempotencyKey:{type:'string'},saveActionKey:{type:'string'},fields:{type:'array',minItems:1,maxItems:12,items:{type:'object',required:['selector','text'],properties:{selector:{type:'string'},text:{type:'string',maxLength:4096}},additionalProperties:false}}}}},
  {name:'browser_release',description:'Release one exact browser binding.',inputSchema:{...obj,required:['sessionId'],properties:{sessionId:{type:'string'}}}}
 ];
@@ -29,7 +43,7 @@ export async function dispatchMcp(payload,controller) {
   let answer;
   try {
     switch(method){
-      case 'initialize':answer={protocolVersion:'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'liming-browser-direct',version:'0.3.1'}};break;
+      case 'initialize':answer={protocolVersion:'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'liming-browser-direct',version:'0.4.0'}};break;
       case 'ping':answer={};break;
       case 'tools/list':answer={tools:TOOLS};break;
       case 'tools/call':{
@@ -37,6 +51,16 @@ export async function dispatchMcp(payload,controller) {
         if(typeof args!=='object'||args===null||Array.isArray(args))throw new ControlError('BAD_ARGS','Arguments must be an object');
         let data;
         switch(name){
+          case 'browser_task_open':data=await controller.taskOpen(args);break;
+          case 'browser_task_navigate':data=await controller.taskNavigate(args);break;
+          case 'browser_task_prepare':data=await controller.taskPrepare(args);break;
+          case 'browser_task_bind':data=await controller.taskBind(args);break;
+          case 'browser_task_list':data=await controller.taskList();break;
+          case 'browser_task_pause':data=await controller.taskPause(args);break;
+          case 'browser_task_resume':data=await controller.taskResume(args);break;
+          case 'browser_task_recover':data=await controller.taskRecover(args);break;
+          case 'browser_task_finish':data=await controller.taskFinish(args);break;
+          case 'browser_task_close':data=await controller.taskClose(args);break;
           case 'browser_status':data=await controller.status();break;
           case 'browser_tabs':data=await controller.tabs();break;
           case 'browser_bind':data=await controller.bind(args);break;
@@ -96,7 +120,9 @@ if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
   const attestationGate=new HostAttestationGate({expectedUserDataDir:process.env.LIMING_EXPECTED_CHROME_USER_DATA_DIR,expectedProfileDirectory:process.env.LIMING_EXPECTED_CHROME_PROFILE_DIRECTORY,expectedExecutablePath:process.env.LIMING_EXPECTED_CHROME_EXE});
   const ledgerPath=process.env.LIMING_ACTION_LEDGER_PATH;
   if(!ledgerPath)throw new Error('LIMING_ACTION_LEDGER_PATH required for durable replay protection');
-  const controller=new BrowserController(new ChromeCDPBrowser(),{attestationGate,localTests:false,ledger:new DurableActionLedger(ledgerPath)});
+  const taskPath=process.env.LIMING_TASK_LEDGER_PATH;
+  if(!taskPath||taskPath===ledgerPath)throw new Error('Separate LIMING_TASK_LEDGER_PATH required for multi-client tab ownership');
+  const controller=new BrowserController(new ChromeCDPBrowser(),{attestationGate,localTests:false,ledger:new DurableActionLedger(ledgerPath),taskRegistry:new DurableTaskRegistry(taskPath),requireManagedTasks:true});
   const port=Number(process.env.LIMING_BROWSER_PORT||59422);if(port!==59422)throw new Error('Production local MCP must use the dedicated 59422 port');
   const {listen}=createServer({token,controller,port,host:'127.0.0.1',allowedOrigins:(process.env.LIMING_ALLOWED_ORIGINS||'').split(',').filter(Boolean)});
   listen().then(addr=>console.log(JSON.stringify({state:'LISTENING',host:addr.address,port:addr.port,profileAttested:'live_runtime_check_required'}))).catch(e=>{console.error('STARTUP_FAILED '+e.message);process.exitCode=1;});

@@ -20,7 +20,7 @@ test('HTTP server refuses unauthenticated requests and foreign Origins',async()=
   const foreign=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,Origin:'https://evil.example'},body:JSON.stringify(data)});
   assert.equal(foreign.status,403);
   const ok=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(data)});
-  assert.equal(ok.status,200);assert.equal((await ok.json()).result.tools.length,8);
+  assert.equal(ok.status,200);assert.ok((await ok.json()).result.tools.length>=17);
  }finally{await new Promise(r=>api.server.close(r));}
 });
 test('HTTP unrecognized methods cannot execute browser actions',async()=>{
