@@ -1,0 +1,63 @@
+name: Liming Browser Direct - isolated validation
+on:
+  push:
+    branches:
+      - "codex/liming-browser-*"
+    paths:
+      - "browser-direct/**"
+      - ".github/workflows/liming-browser-ci.yml"
+  pull_request:
+    paths:
+      - "browser-direct/**"
+      - ".github/workflows/liming-browser-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-direct-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-browser:
+    name: Node ${{ matrix.node }} + isolated Chromium CDP
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    defaults:
+      run:
+        working-directory: browser-direct/runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify browser test executable
+        shell: bash
+        run: |
+          if [ ! -x /usr/bin/chromium ]; then
+            chrome="$(command -v google-chrome || command -v google-chrome-stable || true)"
+            test -n "$chrome" || { echo "No isolated Chromium/Chrome executable"; exit 1; }
+            sudo ln -s "$chrome" /usr/bin/chromium
+          fi
+          /usr/bin/chromium --version
+      - name: Full synthetic browser and security tests
+        run: npm run test:coverage
+
+  windows-unit:
+    name: Windows Node 22 unit / anti-replay
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: browser-direct/runtime
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Windows unit tests (no production Chrome)
+        run: npm run test:unit
