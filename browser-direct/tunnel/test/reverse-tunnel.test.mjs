@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createGateway} from '../gateway.mjs';
+import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {WindowsTunnelAgent} from '../agent.mjs';
 import {createServer} from '../../runtime/src/mcp-server.mjs';
 import {setTimeout as delay} from 'node:timers/promises';
@@ -42,6 +45,38 @@ test('an uncertain local action is delivered once and is not automatically repla
  }finally{await f.close();}
 });
 test('HTTP gateway refuses non-HTTPS untrusted production request even with tokens',async()=>{
- const gateway=createGateway({frontendToken,agentToken,agentId,localTests:false});const a=await gateway.listen(0,'127.0.0.1');
+ const gateway=createGateway({frontendToken,agentToken,agentId,localTests:false,journalPath:join(tmpdir(),'liming-browser-gw-http-test-050.jsonl')});const a=await gateway.listen(0,'127.0.0.1');
  try{const r=await fetch(`http://127.0.0.1:${a.port}/status`,{headers:{Authorization:`Bearer ${frontendToken}`}});assert.equal(r.status,426);}finally{await gateway.close();}
+});
+
+test('spoofed X-Forwarded-Proto cannot make direct plaintext transport pass production TLS check',async()=>{
+ const gateway=createGateway({frontendToken,agentToken,agentId,localTests:false,journalPath:join(tmpdir(),'liming-browser-gw-http-test-050.jsonl')});const a=await gateway.listen(0,'127.0.0.1');
+ try{const r=await fetch(`http://127.0.0.1:${a.port}/status`,{headers:{Authorization:`Bearer ${frontendToken}`,'X-Forwarded-Proto':'https'}});
+  assert.equal(r.status,426);const body=await r.json();assert.equal(body.error,'END_TO_END_TLS_REQUIRED');}
+ finally{await gateway.close();}
+});
+
+test('gateway durable request journal survives a restart and never automatically resends uncertain work',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'bd050-gateway-'));const journalPath=join(dir,'jobs.jsonl');
+ const f=await fixture();
+ try{
+  // A separate new local synthetic gateway is used to exercise the durable journal.
+  const g=createGateway({frontendToken,agentToken,agentId,localTests:true,journalPath,waitNextMs:500});
+  const a=await g.listen(0);const url=`http://127.0.0.1:${a.port}`;
+  try{
+    // Establish an authenticated agent heartbeat via an outstanding poll.
+    const poll=fetch(url+'/agent/next',{headers:{Authorization:`Bearer ${agentToken}`,'X-Liming-Agent-Id':agentId}});
+    await delay(30);
+    const mcp=fetch(url+'/mcp',{method:'POST',headers:{Authorization:`Bearer ${frontendToken}`,'Content-Type':'application/json'},body:JSON.stringify(rpc(77,'ping'))});
+    const work=await poll;assert.equal(work.status,200);const job=await work.json();
+    const entry=await fetch(url+'/result/'+job.requestId,{headers:{Authorization:`Bearer ${frontendToken}`}});assert.equal((await entry.json()).status,'UNCERTAIN_OUTCOME_NO_AUTO_REPLAY');
+    const ack=await fetch(url+'/agent/reply',{method:'POST',headers:{Authorization:`Bearer ${agentToken}`,'X-Liming-Agent-Id':agentId,'Content-Type':'application/json'},body:JSON.stringify({requestId:job.requestId,response:{jsonrpc:'2.0',id:77,result:{ok:true}}})});assert.equal(ack.status,200);
+    const result=await mcp;assert.equal(result.status,200);
+    await g.close();
+    const restarted=createGateway({frontendToken,agentToken,agentId,localTests:true,journalPath});const b=await restarted.listen(0);try{
+      const status=await fetch(`http://127.0.0.1:${b.port}/result/${job.requestId}`,{headers:{Authorization:`Bearer ${frontendToken}`}});
+      const json=await status.json();assert.equal(json.status,'REPLY_COMMITTED');assert.equal(json.responseDigest.length,64);assert.equal(restarted.status().queued,0);
+    }finally{await restarted.close();}
+  }catch(e){try{await g.close();}catch{}throw e;}
+ }finally{await f.close();await rm(dir,{recursive:true,force:true});}
 });

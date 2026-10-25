@@ -1,6 +1,6 @@
 {
   "name": "liming-browser-direct-runtime",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,7 +9,7 @@
   "scripts": {
     "test": "node --test test/*.test.mjs ../tunnel/test/*.test.mjs",
     "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test test/*.test.mjs ../tunnel/test/*.test.mjs",
-    "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs test/attestation.test.mjs test/persistence.test.mjs test/task-tabs.test.mjs ../tunnel/test/reverse-tunnel.test.mjs",
+    "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs test/attestation.test.mjs test/persistence.test.mjs test/task-tabs.test.mjs test/hardening.test.mjs ../tunnel/test/reverse-tunnel.test.mjs",
     "start": "node src/mcp-server.mjs",
     "start:gateway": "node ../tunnel/gateway.mjs",
     "start:agent": "node ../tunnel/agent.mjs"

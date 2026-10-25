@@ -30,7 +30,7 @@ test('reload mismatch never claims persistence success and never automatically r
  assert.equal(v.status,'PERSISTENCE_MISMATCH');assert.equal(v.poststate_verified,false);assert.equal(b.reloads,1);assert.equal(b.clicks,1);
 });
 test('new attestation provider blocks UI mutation when current PID/profiling cannot be proved',async()=>{
- const b=new PersistBrowser();const c=new BrowserController(b,{attestationGate:{check:async()=>({attested:false}),assertAllowed:async()=>{const e=new Error('Mismatch');e.code='PROFILE_NOT_ATTESTED';throw e;}}});
+ const b=new PersistBrowser();const c=new BrowserController(b,{localTests:true,attestationGate:{check:async()=>({attested:false}),assertAllowed:async()=>{const e=new Error('Mismatch');e.code='PROFILE_NOT_ATTESTED';throw e;}}});
  const s=await c.bind({tabId:'tab',scope,anchors});const status=await c.status();assert.equal(status.profile_attested,false);
  await assert.rejects(()=>c.act({sessionId:s.sessionId,expectedRevision:s.revision,action:{kind:'click',selector:'#save'},idempotencyKey:'test-save-action-0003'}),e=>e.code==='PROFILE_NOT_ATTESTED');
  assert.equal(b.clicks,0);

@@ -9,7 +9,7 @@ import {ChromeCDPBrowser} from '../src/cdp-browser.mjs';
 import {BrowserController} from '../src/controller.mjs';
 const scope=i=>({project:'Liming',clientRef:'client-'+i,legalEntityRef:'entity-'+i,entity:'Synthetic '+i+' Pty Ltd',entityType:'Company',fy:'FY2026',period:'FY2026',formType:'CTR',matter:'Company Tax Return',xeroOrgRef:'org-'+i,xeroOrgLabel:'Practice Org',returnRef:'return-'+i});
 const anchors=i=>({client:`Synthetic ${i} Pty Ltd`,year:'FY2026',form:'Company Tax Return',organization:'Practice Org',returnRef:'return-'+i});
-const html=i=>`<!DOCTYPE html><html><title>Owned Test ${i}</title><body><h1 id="identity">Synthetic ${i} Pty Ltd FY2026 Company Tax Return Practice Org return-${i}</h1><label>Amount<input id="amount" aria-label="Amount"></label><button id="save" onclick="document.getElementById('proof').innerText='Saved synthetic draft'">Save draft</button><p id="proof"></p></body></html>`;
+const html=i=>`<!DOCTYPE html><html><title>Owned Test ${i}</title><body><h1 id="identity">Synthetic ${i} Pty Ltd FY2026 Company Tax Return Practice Org return-${i}</h1><main id="activeReturn"><h2 id="activeIdentity">Synthetic ${i} Pty Ltd FY2026 Company Tax Return return-${i}</h2><label>Amount<input id="amount" aria-label="Amount"></label><button id="save" onclick="document.getElementById('proof').innerText='Saved synthetic draft'">Save draft</button><p id="proof"></p></main></body></html>`;
 test('real Chromium CDP creates and closes ONLY owned tab, and watches other-client page replacement without per-step identity polling',{timeout:85000},async()=>{
  const dir=await mkdtemp(join(tmpdir(),'liming-managed-cdp-'));
  let child;let err='';
@@ -26,14 +26,15 @@ test('real Chromium CDP creates and closes ONLY owned tab, and watches other-cli
   assert.notEqual(a.tabId,b.tabId);assert.ok(!(before.some(t=>t.id===a.tabId||t.id===b.tabId)));
   await browser.withTab(a.tabId,async d=>browser.evaluate(d,`(()=>{document.open();document.write(${JSON.stringify(html('a'))});document.close();return document.title;})()`));
   await browser.withTab(b.tabId,async d=>browser.evaluate(d,`(()=>{document.open();document.write(${JSON.stringify(html('b'))});document.close();return document.title;})()`));
-  const [ab,bb]=await Promise.all([c.taskBind({taskId:a.taskId,anchors:anchors('a')}),c.taskBind({taskId:b.taskId,anchors:anchors('b')})]);
+  const [ab,bb]=await Promise.all([c.taskBind({taskId:a.taskId,anchors:anchors('a'),formGuard:{formSelector:'#activeReturn',identitySelector:'#activeIdentity',identityText:'Synthetic a Pty Ltd FY2026 Company Tax Return return-a'}}),c.taskBind({taskId:b.taskId,anchors:anchors('b'),formGuard:{formSelector:'#activeReturn',identitySelector:'#activeIdentity',identityText:'Synthetic b Pty Ltd FY2026 Company Tax Return return-b'}})]);
   const filled=await Promise.all([c.fillFields({sessionId:ab.sessionId,idempotencyKey:'chromium-tab-a-fill-001',fields:[{selector:'#amount',text:'1000'}]}),c.fillFields({sessionId:bb.sessionId,idempotencyKey:'chromium-tab-b-fill-001',fields:[{selector:'#amount',text:'2000'}]})]);
   assert.ok(filled.every(r=>r.field_values_verified));
   assert.equal((await browser.readField(a.tabId,'#amount')).value,'1000');
   assert.equal((await browser.readField(b.tabId,'#amount')).value,'2000');
   // Simulate a React SPA silently replacing the on-page customer header with another client.
-  await browser.withTab(a.tabId,d=>browser.evaluate(d,"(()=>{document.getElementById('identity').innerText='Different client FY2026 Company Tax Return Practice Org return-b';return true;})()"));
+  await browser.withTab(a.tabId,d=>browser.evaluate(d,"(()=>{document.getElementById('activeIdentity').innerText='Synthetic b Pty Ltd FY2026 Company Tax Return return-b';return true;})()"));
   const observedGuard=await browser.lightweightProbe(a.tabId);
+  assert.equal((await browser.observe(a.tabId)).visibleText.includes('Synthetic a Pty Ltd'),true,'Old customer header is deliberately retained');
   assert.equal(observedGuard.guardDirty,true);
   await assert.rejects(()=>c.fillFields({sessionId:ab.sessionId,idempotencyKey:'chromium-tab-a-fill-002',fields:[{selector:'#amount',text:'9999'}]}),e=>e.code==='TASK_REVALIDATION_REQUIRED');
   assert.equal((await browser.readField(a.tabId,'#amount')).value,'1000');

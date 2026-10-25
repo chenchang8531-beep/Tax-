@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {resolve} from 'node:path';
 import { ChromeCDPBrowser } from './cdp-browser.mjs';
@@ -10,6 +11,7 @@ import { ControlError, constantTimeTokenMatch } from './safety.mjs';
 
 const obj={type:'object',additionalProperties:false};
 const managedTaskScope={type:'object',required:['project','clientRef','legalEntityRef','entity','entityType','fy','period','formType','matter','xeroOrgRef','xeroOrgLabel','returnRef'],properties:Object.fromEntries(['project','clientRef','legalEntityRef','entity','entityType','fy','period','formType','matter','xeroOrgRef','xeroOrgLabel','returnRef'].map(k=>[k,{type:'string'}])),additionalProperties:false};
+const activeFormGuard={type:'object',required:['formSelector','identitySelector','identityText'],additionalProperties:false,properties:{formSelector:{type:'string'},identitySelector:{type:'string'},identityText:{type:'string'}}};
 const taskAnchors={type:'object',required:['client','year','form','organization','returnRef'],properties:Object.fromEntries(['client','year','form','organization','returnRef'].map(k=>[k,{type:'string'}])),additionalProperties:false};
 const expectedFields={type:'array',minItems:1,maxItems:12,items:{type:'object',required:['selector','text'],properties:{selector:{type:'string'},text:{type:'string'}},additionalProperties:false}};
 const requiredScope={type:'object',required:['project','entity','period','matter'],properties:{project:{type:'string'},entity:{type:'string'},period:{type:'string'},matter:{type:'string'}},additionalProperties:false};
@@ -17,14 +19,19 @@ const expectedPoststate={type:'object',properties:{url:{type:'string'},visibleTe
 const action={type:'object',required:['kind'],properties:{kind:{type:'string',enum:['click','double_click','hover','drag','type','scroll','press','select','wait','navigate']},selector:{type:'string'},x:{type:'number'},y:{type:'number'},toX:{type:'number'},toY:{type:'number'},text:{type:'string'},value:{type:'string'},key:{type:'string'},deltaY:{type:'number'},deltaX:{type:'number'},ms:{type:'integer'},url:{type:'string'}},additionalProperties:false};
 export const TOOLS=[
  {name:'browser_task_open',description:'Create a NEW owned Xero Chrome tab for exact client/reference, entity, FY, form, organisation and unique return. No tab reuse or automatic form entry.',inputSchema:{...obj,required:['scope','startUrl'],properties:{scope:managedTaskScope,startUrl:{type:'string'}}}},
+ {name:'browser_task_create_return',description:'Only a provisionally locked, evidence-backed new return may click the explicit Create Draft button. Outcome uncertain until unique Return ID is read back.',inputSchema:{...obj,required:['taskId','idempotencyKey','action','verifiedObligationRef','duplicateSearchRef'],properties:{taskId:{type:'string'},idempotencyKey:{type:'string'},action,verifiedObligationRef:{type:'string'},duplicateSearchRef:{type:'string'}}}},
+ {name:'browser_task_promote_return',description:'After exact new Xero Return ID is observable, atomically promote the provisional client/FY/form lease to the canonical organisation/Return lease.',inputSchema:{...obj,required:['taskId','returnRef'],properties:{taskId:{type:'string'},returnRef:{type:'string'}}}},
  {name:'browser_task_navigate',description:'Idempotently navigate ONLY the newly created unbound tab to an authorised Xero URL before binding.',inputSchema:{...obj,required:['taskId','url','idempotencyKey'],properties:{taskId:{type:'string'},url:{type:'string'},idempotencyKey:{type:'string'}}}},
  {name:'browser_task_prepare',description:'Before initial form binding, allow only read/navigation (Xero link, URL navigation, wait or scroll); forbid form inputs and buttons.',inputSchema:{...obj,required:['taskId','idempotencyKey','action'],properties:{taskId:{type:'string'},idempotencyKey:{type:'string'},action}}},
- {name:'browser_task_bind',description:'ONE full initial check of client, FY, form, organisation, unique Xero return; bind owned tab and create session.',inputSchema:{...obj,required:['taskId','anchors'],properties:{taskId:{type:'string'},anchors:taskAnchors}}},
+ {name:'browser_task_bind',description:'ONE full initial check of client, FY, form, organisation, unique Xero return; bind owned tab and create session.',inputSchema:{...obj,required:['taskId','anchors'],properties:{taskId:{type:'string'},anchors:taskAnchors,formGuard:activeFormGuard}}},
  {name:'browser_task_list',description:'Only own task IDs, tab IDs, ownership and hashed scope states; never expose client values.',inputSchema:{...obj,properties:{}}},
  {name:'browser_task_pause',description:'Pause one task without closing tab or editing fields; requires identity revalidation before resume.',inputSchema:{...obj,required:['taskId'],properties:{taskId:{type:'string'},reason:{type:'string'}}}},
- {name:'browser_task_resume',description:'Recheck full identity ONLY after pause, unexpected navigation, error, tab drift or interruption.',inputSchema:{...obj,required:['taskId','anchors'],properties:{taskId:{type:'string'},anchors:taskAnchors}}},
- {name:'browser_task_recover',description:'After process restart, recover only an exact pre-journaled, still-open plugin-created Chrome target and scope; full revalidation.',inputSchema:{...obj,required:['taskId','scope','anchors'],properties:{taskId:{type:'string'},scope:managedTaskScope,anchors:taskAnchors}}},
- {name:'browser_task_finish',description:'ONE final identity check, saved/reloaded field-value audit and optional automatic closure of ONLY this task-owned tab. Reject unsaved, stale or ambiguous work.',inputSchema:{...obj,required:['taskId','expectedFields'],properties:{taskId:{type:'string'},expectedFields,closeTab:{type:'boolean'}}}},
+ {name:'browser_task_resume',description:'Recheck full identity ONLY after pause, unexpected navigation, error, tab drift or interruption.',inputSchema:{...obj,required:['taskId','anchors'],properties:{taskId:{type:'string'},anchors:taskAnchors,formGuard:activeFormGuard}}},
+ {name:'browser_task_recover',description:'After process restart, recover only an exact pre-journaled, still-open plugin-created Chrome target and scope; full revalidation.',inputSchema:{...obj,required:['taskId','scope','anchors'],properties:{taskId:{type:'string'},scope:managedTaskScope,anchors:taskAnchors,formGuard:activeFormGuard}}},
+ {name:'browser_task_plan',description:'Freeze all mandatory return sections and an authoritative source/workpaper version, before any finalisation.',inputSchema:{...obj,required:['taskId','sections','workpaperVersion'],properties:{taskId:{type:'string'},sections:{type:'array',items:{type:'string'},minItems:2,maxItems:120},workpaperVersion:{type:'string'}}}},
+ {name:'browser_task_checkpoint',description:'After verified Save and NEW document readback, checkpoint one planned section with a matching action receipt.',inputSchema:{...obj,required:['taskId','sectionId','verifyActionKey'],properties:{taskId:{type:'string'},sectionId:{type:'string'},verifyActionKey:{type:'string'}}}},
+ {name:'browser_task_review_approve',description:'Requires signed independent external Xero tax domain review; cannot be self-approved by this plugin.',inputSchema:{...obj,required:['taskId','reviewReceipt'],properties:{taskId:{type:'string'},reviewReceipt:{type:'object'}}}},
+ {name:'browser_task_finish',description:'Final UI identity/field audit only after ALL frozen sections are checkpointed. Returns AWAITING_DOMAIN_REVIEW; never auto-closes an unreviewed tax return.',inputSchema:{...obj,required:['taskId','expectedFields'],properties:{taskId:{type:'string'},expectedFields,closeTab:{type:'boolean'}}}},
  {name:'browser_task_close',description:'Close ONLY an owned tab after verified finalisation (or an untouched unbound tab). Never close other client tabs.',inputSchema:{...obj,required:['taskId'],properties:{taskId:{type:'string'}}}},
  {name:'browser_status',description:'Read the local browser controller readiness and profile attestation; never assert tunnel or Xero success.',inputSchema:{...obj,properties:{}}},
  {name:'browser_tabs',description:'List allowed Xero tabs only; no mutation.',inputSchema:{...obj,properties:{}}},
@@ -43,7 +50,7 @@ export async function dispatchMcp(payload,controller) {
   let answer;
   try {
     switch(method){
-      case 'initialize':answer={protocolVersion:'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'liming-browser-direct',version:'0.4.0'}};break;
+      case 'initialize':answer={protocolVersion:'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'liming-browser-direct',version:'0.5.0'}};break;
       case 'ping':answer={};break;
       case 'tools/list':answer={tools:TOOLS};break;
       case 'tools/call':{
@@ -53,12 +60,17 @@ export async function dispatchMcp(payload,controller) {
         switch(name){
           case 'browser_task_open':data=await controller.taskOpen(args);break;
           case 'browser_task_navigate':data=await controller.taskNavigate(args);break;
+          case 'browser_task_create_return':data=await controller.taskCreateReturn(args);break;
+          case 'browser_task_promote_return':data=await controller.taskPromoteReturn(args);break;
           case 'browser_task_prepare':data=await controller.taskPrepare(args);break;
           case 'browser_task_bind':data=await controller.taskBind(args);break;
           case 'browser_task_list':data=await controller.taskList();break;
           case 'browser_task_pause':data=await controller.taskPause(args);break;
           case 'browser_task_resume':data=await controller.taskResume(args);break;
           case 'browser_task_recover':data=await controller.taskRecover(args);break;
+          case 'browser_task_plan':data=await controller.taskPlan(args);break;
+          case 'browser_task_checkpoint':data=await controller.taskCheckpoint(args);break;
+          case 'browser_task_review_approve':data=await controller.taskReviewApprove(args);break;
           case 'browser_task_finish':data=await controller.taskFinish(args);break;
           case 'browser_task_close':data=await controller.taskClose(args);break;
           case 'browser_status':data=await controller.status();break;
@@ -122,7 +134,7 @@ if(process.argv[1]&&fileURLToPath(import.meta.url)===resolve(process.argv[1])){
   if(!ledgerPath)throw new Error('LIMING_ACTION_LEDGER_PATH required for durable replay protection');
   const taskPath=process.env.LIMING_TASK_LEDGER_PATH;
   if(!taskPath||taskPath===ledgerPath)throw new Error('Separate LIMING_TASK_LEDGER_PATH required for multi-client tab ownership');
-  const controller=new BrowserController(new ChromeCDPBrowser(),{attestationGate,localTests:false,ledger:new DurableActionLedger(ledgerPath),taskRegistry:new DurableTaskRegistry(taskPath),requireManagedTasks:true});
+  const controller=new BrowserController(new ChromeCDPBrowser(),{attestationGate,localTests:false,ledger:new DurableActionLedger(ledgerPath),taskRegistry:new DurableTaskRegistry(taskPath),requireManagedTasks:true,reviewPublicKey:process.env.LIMING_DOMAIN_REVIEW_PUBKEY_FILE?readFileSync(process.env.LIMING_DOMAIN_REVIEW_PUBKEY_FILE):null});
   const port=Number(process.env.LIMING_BROWSER_PORT||59422);if(port!==59422)throw new Error('Production local MCP must use the dedicated 59422 port');
   const {listen}=createServer({token,controller,port,host:'127.0.0.1',allowedOrigins:(process.env.LIMING_ALLOWED_ORIGINS||'').split(',').filter(Boolean)});
   listen().then(addr=>console.log(JSON.stringify({state:'LISTENING',host:addr.address,port:addr.port,profileAttested:'live_runtime_check_required'}))).catch(e=>{console.error('STARTUP_FAILED '+e.message);process.exitCode=1;});

@@ -44,7 +44,7 @@ function nodeTargetScript(action){
   const selector=action.selector?JSON.stringify(action.selector):'null';
   const x=Number.isFinite(action.x)?action.x:'null';const y=Number.isFinite(action.y)?action.y:'null';
   return `(() => {
-   if(window.__limingTabIdentityGuard?.dirty)return {error:'TASK_REVALIDATION_REQUIRED'};
+   if(window.__limingTabIdentityGuard&&!window.__limingTabIdentityGuard.check())return {error:'TASK_REVALIDATION_REQUIRED'};
    let el;try { if(${selector}){const matches=[...document.querySelectorAll(${selector})];if(matches.length!==1)return {error:'AMBIGUOUS_TARGET'};el=matches[0];}else el=document.elementFromPoint(${x},${y}); }catch(e){return {error:'INVALID_SELECTOR'}}
    if(!el) return {error:'TARGET_NOT_FOUND'};
    el=el.closest('button,a,input,textarea,select,[role="button"],[role="link"],[role="menuitem"],[role="option"],[contenteditable],label')||el;
@@ -85,10 +85,10 @@ const fieldScript=selector=>`(() => {
   const label=String(el.getAttribute('aria-label')||el.labels?.[0]?.innerText||el.getAttribute('placeholder')||'').slice(0,160);
   const value=sensitive ? null : (el.isContentEditable?String(el.textContent||''):String(el.value??''));
   return {count:1,exists:true,visible,enabled:!el.disabled,readOnly:Boolean(el.readOnly),editable,tag,type,label,value,
-      x:r.x+r.width/2,y:r.y+r.height/2,url:location.href,documentToken:performance.timeOrigin,guardInstalled:Boolean(window.__limingTabIdentityGuard),guardDirty:Boolean(window.__limingTabIdentityGuard?.dirty)};
+      x:r.x+r.width/2,y:r.y+r.height/2,url:location.href,documentToken:performance.timeOrigin,guardInstalled:Boolean(window.__limingTabIdentityGuard),guardDirty:Boolean(window.__limingTabIdentityGuard?.dirty)||Boolean(window.__limingTabIdentityGuard&&!window.__limingTabIdentityGuard.check())};
 })()`;
 const focusScript=selector=>`(() => {
-  if(window.__limingTabIdentityGuard?.dirty)return {ok:false,code:'TASK_REVALIDATION_REQUIRED'};
+  if(window.__limingTabIdentityGuard&&!window.__limingTabIdentityGuard.check())return {ok:false,code:'TASK_REVALIDATION_REQUIRED'};
   let found;try{found=[...document.querySelectorAll(${JSON.stringify(selector)})];}catch{return {ok:false,code:'INVALID_SELECTOR'}}
   if(found.length!==1)return {ok:false,code:'AMBIGUOUS_FIELD'};
   const el=found[0],tag=el.tagName;
@@ -131,26 +131,41 @@ export class ChromeCDPBrowser {
     throw new ControlError('TAB_CLOSE_UNCERTAIN','Chrome target still exists after close command',502);
   }
   async lightweightProbe(tabId){return this.withTab(tabId,c=>this.lightweightProbeOn(c));}
-  async installIdentityGuard(tabId,anchors){return this.withTab(tabId,c=>this.installIdentityGuardOn(c,anchors));}
-  async installIdentityGuardOn(c,anchors){
+  async installIdentityGuard(tabId,anchors,spec){return this.withTab(tabId,c=>this.installIdentityGuardOn(c,anchors,spec));}
+  async installIdentityGuardOn(c,anchors,spec){
     await this.assertOrigin(c);
-    if(!Array.isArray(anchors)||anchors.length<4||anchors.length>6)throw new ControlError('TASK_ANCHORS_REQUIRED','Four independent guards required');
-    const code=`(() => {
+    if(!Array.isArray(anchors)||anchors.length<4||anchors.length>6)throw new ControlError('TASK_ANCHORS_REQUIRED','Four identity anchors required');
+    // Real Xero must supply an independently observed active FORM container and identity element.
+    // A page-wide header/whole-body substring is not sufficient to attest an active return.
+    if(!spec && !this.localTests)throw new ControlError('ACTIVE_FORM_GUARD_REQUIRED','A scoped active Xero Return DOM selector is required',409);
+    if(spec && (typeof spec.formSelector!=='string'||!spec.formSelector||spec.formSelector.length>250||typeof spec.identitySelector!=='string'||!spec.identitySelector||spec.identitySelector.length>250||typeof spec.identityText!=='string'||spec.identityText.length<3||spec.identityText.length>180))
+      throw new ControlError('ACTIVE_FORM_GUARD_REQUIRED','Invalid active form identity contract',409);
+    const selector=spec?.formSelector||'body';const identitySelector=spec?.identitySelector||'#identity';
+    const identityText=spec?.identityText||anchors[0];
+    const script=`(() => {
       if(window.__limingTabIdentityGuard?.observer)window.__limingTabIdentityGuard.observer.disconnect();
-      const anchors=${JSON.stringify(anchors)}.map(x=>String(x).toLocaleLowerCase());
-      const guard={dirty:false,identityLost:false,observer:null};
-      const matches=()=>{const text=String(document.body?.innerText||'').toLocaleLowerCase();return anchors.every(a=>text.includes(a));};
-      if(!matches())return {installed:false,reason:'ANCHORS_MISSING'};
-      guard.observer=new MutationObserver(()=>{if(!matches()){guard.dirty=true;guard.identityLost=true;}});
-      guard.observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true});
+      const rootMatches=[...document.querySelectorAll(${JSON.stringify(selector)})];
+      if(rootMatches.length!==1)return {installed:false,reason:'ACTIVE_FORM_NOT_UNIQUE'};
+      const root=rootMatches[0], identities=[...root.querySelectorAll(${JSON.stringify(identitySelector)})];
+      if(identities.length!==1)return {installed:false,reason:'ACTIVE_IDENTITY_NOT_UNIQUE'};
+      const identity=identities[0],expected=${JSON.stringify(identityText.toLocaleLowerCase())};
+      const guard={dirty:false,observer:null,formSelector:${JSON.stringify(selector)},identitySelector:${JSON.stringify(identitySelector)}};
+      guard.check=()=>{const active=[...document.querySelectorAll(guard.formSelector)];
+        if(active.length!==1||active[0]!==root||!root.isConnected||!identity.isConnected||
+          !root.contains(identity)||[...root.querySelectorAll(guard.identitySelector)].length!==1||
+          !String(identity.textContent||'').toLocaleLowerCase().includes(expected))guard.dirty=true;
+        return !guard.dirty;};
+      if(!guard.check())return {installed:false,reason:'ACTIVE_IDENTITY_MISMATCH'};
+      guard.observer=new MutationObserver(()=>{guard.check()});
+      guard.observer.observe(document.documentElement,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['data-return-id','data-client-id','aria-selected']});
       Object.defineProperty(window,'__limingTabIdentityGuard',{value:guard,configurable:true,writable:false});
-      return {installed:true,dirty:guard.dirty};
+      return {installed:true,dirty:false};
     })()`;
-    const result=await this.evaluate(c,code);
-    if(!result?.installed||result.dirty)throw new ControlError('TASK_GUARD_UNAVAILABLE','Browser identity guard could not install on bound form',409);
-    return result;
+    const status=await this.evaluate(c,script);
+    if(!status?.installed||status.dirty)throw new ControlError('TASK_GUARD_UNAVAILABLE','Active form identity guard did not install: '+String(status?.reason||'UNKNOWN'),409);
+    return status;
   }
-  async lightweightProbeOn(c){await this.assertOrigin(c);return this.evaluate(c,'({url:location.href,documentToken:performance.timeOrigin,readyState:document.readyState,guardInstalled:Boolean(window.__limingTabIdentityGuard),guardDirty:Boolean(window.__limingTabIdentityGuard?.dirty)})');}
+  async lightweightProbeOn(c){await this.assertOrigin(c);return this.evaluate(c,'({url:location.href,documentToken:performance.timeOrigin,readyState:document.readyState,guardInstalled:Boolean(window.__limingTabIdentityGuard),guardDirty:Boolean(window.__limingTabIdentityGuard?.dirty)||Boolean(window.__limingTabIdentityGuard&&!window.__limingTabIdentityGuard.check())})');}
   async withTab(tabId,fn){
     const tabs=await this.fetchJson('/json/list');const tab=tabs.find(t=>t.type==='page'&&t.id===tabId);
     if(!tab?.webSocketDebuggerUrl)throw new ControlError('TAB_MISSING','Chrome CDP tab missing',404);
@@ -229,19 +244,21 @@ export class ChromeCDPBrowser {
     }
   }
   async transaction(tabId,fn){return this.withTab(tabId,async c=>fn({
-    observe:()=>this.observeOn(c),lightweightProbe:()=>this.lightweightProbeOn(c),describeTarget:a=>this.describeTargetOn(c,a),readField:s=>this.readFieldOn(c,s),reload:()=>this.reloadOn(c),
+    observe:()=>this.observeOn(c),lightweightProbe:()=>this.lightweightProbeOn(c),installIdentityGuard:(a,s)=>this.installIdentityGuardOn(c,a,s),describeTarget:a=>this.describeTargetOn(c,a),readField:s=>this.readFieldOn(c,s),reload:()=>this.reloadOn(c),
     setField:(f,m)=>this.setFieldOn(c,f,m),perform:(a,el)=>this.performOn(c,a,el)
   }));}
   async reloadOn(c){
     await this.assertOrigin(c);
+    const previous=await this.evaluate(c,'performance.timeOrigin');
     await c.send('Page.reload',{ignoreCache:false});
-    // Reload completion is confirmed by a successful DOM observation, never by Page.reload ACK alone.
-    let last;
-    for(let i=0;i<35;i++){
+    // Page.reload ACK alone is not document navigation. Require a NEW Performance time origin.
+    for(let i=0;i<55;i++){
       await new Promise(r=>setTimeout(r,200));
-      try{const ready=await this.evaluate(c,'document.readyState');if(ready==='complete'){await this.assertOrigin(c);return;}}catch(e){last=e;}
+      try{const state=await this.evaluate(c,'({ready:document.readyState,origin:performance.timeOrigin})');
+        if(state?.ready==='complete'&&Number.isFinite(state.origin)&&state.origin!==previous){await this.assertOrigin(c);return {documentChanged:true};}}
+      catch{} // CDP Runtime execution context may be destroyed during navigation.
     }
-    throw new ControlError('RELOAD_TIMEOUT','Chrome reload did not reach a stable document',504);
+    throw new ControlError('RELOAD_TIMEOUT','No independently new ready document after reload',504);
   }
   async observe(tabId){return this.withTab(tabId,c=>this.observeOn(c));}
   async describeTarget(tabId,action){return this.withTab(tabId,c=>this.describeTargetOn(c,action));}

@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto';
+import {AtomicClaims,serialize} from './atomic-claims.mjs';
 import {open, readFile, mkdir} from 'node:fs/promises';
 import {dirname} from 'node:path';
 import {ControlError} from './safety.mjs';
@@ -28,7 +30,7 @@ export class MemoryActionLedger {
 }
 
 export class DurableActionLedger extends MemoryActionLedger {
- constructor(path,{now=Date.now}={}){super({now});if(typeof path!=='string'||!path)throw new Error('Ledger path required');this.path=path;this.queue=Promise.resolve();this.ready=this.load();}
+ constructor(path,{now=Date.now}={}){super({now});if(typeof path!=='string'||!path)throw new Error('Ledger path required');this.path=path;this.queue=Promise.resolve();this.operationQueue=Promise.resolve();this.claims=new AtomicClaims(path+'.claims');this.instanceId=randomUUID();this.ready=this.load();}
  async load(){
    let raw;try{raw=await readFile(this.path,'utf8');}catch(e){if(e.code==='ENOENT')return;throw e;}
    for(const line of raw.split('\n')){
@@ -46,15 +48,20 @@ export class DurableActionLedger extends MemoryActionLedger {
    const next=this.queue.then(run,run);this.queue=next;await next;
  }
  async get(key){await this.ready;return super.get(key);}
- async reserve(key,fingerprint,kind){await this.ready;if(this.records.has(key))throw new ControlError('IDEMPOTENCY_CONFLICT','Idempotency key previously reserved',409);
+ async reserve(key,fingerprint,kind){await this.ready;return serialize(this,async()=>{
+   if(this.records.has(key))throw new ControlError('IDEMPOTENCY_CONFLICT','Idempotency key previously reserved',409);
+   // Atomic on-disk claim before async append or browser action, shared across processes.
+   await this.claims.claim(key,this.instanceId);
    const createdAt=this.now();await this.append({v:1,phase:'RESERVE',key,fingerprint,kind,createdAt});
    this.records.set(key,{fingerprint,result:{status:'UNCERTAIN_OUTCOME',action_id:key,action_kind:kind},createdAt});
- }
- async commit(key,fingerprint,result){await this.ready;const prev=this.records.get(key);if(prev&&prev.fingerprint!==fingerprint)throw new ControlError('IDEMPOTENCY_CONFLICT','Idempotency payload changed',409);
-   const createdAt=prev?.createdAt??this.now();const sanitized=safeResult(result);
+ });}
+ async commit(key,fingerprint,result){await this.ready;return serialize(this,async()=>{
+   const prev=this.records.get(key);if(!prev||prev.fingerprint!==fingerprint)throw new ControlError('IDEMPOTENCY_CONFLICT','Unreserved or changed operation',409);
+   await this.claims.check(key,this.instanceId);
+   const createdAt=prev.createdAt,sanitized=safeResult(result);
    await this.append({v:1,phase:'COMMIT',key,fingerprint,createdAt,result:sanitized});
    this.records.set(key,{fingerprint,result:sanitized,createdAt});
- }
+ });}
  async prune(){// Never expire persisted replay protection silently; compaction needs an independently managed retention/rotation plan.
  }
 }

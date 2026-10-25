@@ -1,5 +1,5 @@
-import {randomUUID} from 'node:crypto';
-import {ControlError,allowedUrl,requireExactScope,riskGuard,snapshotRevision,validateAction,sha256} from './safety.mjs';
+import {randomUUID,verify as verifySignature} from 'node:crypto';
+import {ControlError,allowedUrl,requireExactScope,riskGuard,draftActionAllowlist,snapshotRevision,validateAction,sha256} from './safety.mjs';
 import {MemoryActionLedger} from './ledger.mjs';
 import {retryRead} from './retry.mjs';
 import {normalizedTaskScope,taskDigest,normalizeIdentityAnchors,assertTaskIdentity,MemoryTaskRegistry} from './task-tabs.mjs';
@@ -47,10 +47,10 @@ function assertPoststate(after,predicate){
 }
 
 export class BrowserController {
- constructor(browser,{profileAttested=false,attestationGate=null,localTests=false,now=Date.now,sessionTtlMs=30*60*1000,ledger=new MemoryActionLedger({now}),taskRegistry=new MemoryTaskRegistry(),requireManagedTasks=false}={}){
+ constructor(browser,{profileAttested=false,attestationGate=null,localTests=false,now=Date.now,sessionTtlMs=30*60*1000,ledger=new MemoryActionLedger({now}),taskRegistry=new MemoryTaskRegistry(),requireManagedTasks=false,reviewPublicKey=null,contextVerifier=null,writerLeaseVerifier=null,obligationVerifier=null}={}){
   this.browser=browser;this.profileAttested=profileAttested;this.attestationGate=attestationGate;this.localTests=localTests;this.now=now;this.sessionTtlMs=sessionTtlMs;
   this.sessions=new Map();this.currentLocks=new Set();this.currentKeys=new Set();this.actionLedger=ledger;
-  this.taskRegistry=taskRegistry;this.requireManagedTasks=requireManagedTasks;this.managedTasks=new Map();this.tabOwners=new Map();this.openKeys=new Set();
+  this.taskRegistry=taskRegistry;this.requireManagedTasks=requireManagedTasks;this.reviewPublicKey=reviewPublicKey;this.contextVerifier=contextVerifier;this.writerLeaseVerifier=writerLeaseVerifier;this.obligationVerifier=obligationVerifier;this.managedTasks=new Map();this.tabOwners=new Map();this.openKeys=new Set();
  }
  async assertAuthorizedWrite({sessionId=null,force=false}={}){
   // OS owner/profile attestation is performed when the task OPENS and again at RESUME/FINAL.
@@ -59,7 +59,18 @@ export class BrowserController {
     if(task&&task.state==='BOUND'&&!bound.invalidated&&task.openingHostAttested===true)
       return {attested:true,reason:'UNCHANGED_TASK_LEASE; LIVE_TAB_GUARDED_SEPARATELY',fingerprint:task.hostFingerprint??null};
   }
-  if(this.attestationGate)return this.attestationGate.assertAllowed();
+  if(this.attestationGate){
+    if(!this.localTests){
+      if(typeof this.writerLeaseVerifier!=='function')throw new ControlError('WRITER_BROKER_UNAVAILABLE','Production requires verified exclusive Chrome writer coordination',503);
+      if(typeof this.contextVerifier!=='function')throw new ControlError('CONTEXT_VERIFIER_UNAVAILABLE','Project current-state verifier must be installed',503);
+      const st=sessionId?this.sessions.get(sessionId):null;
+      if(st?.managedTaskId){const task=this.managedTasks.get(st.managedTaskId);const result=await this.contextVerifier(task?.contextBinding);
+        if(result?.current!==true)throw new ControlError('STALE_PROJECT_BINDING','Current Project/workpaper revision cannot be verified',409);}
+      const receipt=await this.writerLeaseVerifier({taskId:st?.managedTaskId||null});
+      if(receipt?.exclusive!==true)throw new ControlError('WRITER_BROKER_UNAVAILABLE','Exclusive writer not attested',409);
+    }
+    return this.attestationGate.assertAllowed();
+  }
   if(!this.profileAttested)throw new ControlError('PROFILE_NOT_ATTESTED','Chrome 9222 process owner must be independently attested',403);
   return {attested:true,reason:'INJECTED_TEST_ATTESTATION'};
  }
@@ -138,6 +149,7 @@ export class BrowserController {
      if(a.kind==='navigate'&&!allowedUrl(a.url,{localTests:this.localTests}))throw new ControlError('ORIGIN_BLOCKED','Only Xero origins allowed',403);
      const element=['click','double_click','hover','drag','type','press','select'].includes(a.kind)?await d.describeTarget(a):{};
      riskGuard(a,element);
+     if(s.managedTaskId&&!this.localTests)draftActionAllowlist(a,element);
      await this.actionLedger.reserve(idempotencyKey,fingerprint,a.kind);
      if(a.kind==='wait')await sleep(a.ms);else await d.perform(a,element);
      const after=await retryRead(()=>d.observe());let status='ACTION_OBSERVED_NO_ASSERTION';
@@ -147,7 +159,7 @@ export class BrowserController {
        observation_returned:true,poststate_verified:status==='POSTSTATE_VERIFIED',deduplicated:false};
    });
    await this.actionLedger.commit(idempotencyKey,fingerprint,result);
-   if(s.managedTaskId){const t=this.managedTasks.get(s.managedTaskId);if(t){t.mutationCounter++;t.persistedCounter=null;if(result.status==='SCOPE_REVALIDATION_REQUIRED')await this.markTaskDirty(t,'POST_ACTION_NAVIGATION_DRIFT');}}
+   if(s.managedTaskId){const t=this.managedTasks.get(s.managedTaskId);if(t&&!['wait','scroll','hover'].includes(a.kind)){t.mutationCounter++;t.persistedCounter=null;if(result.status==='SCOPE_REVALIDATION_REQUIRED')await this.markTaskDirty(t,'POST_ACTION_NAVIGATION_DRIFT');}}
    s.expiresAt=this.now()+this.sessionTtlMs;return result;
   }catch(e){if(s.managedTaskId&& !['IRREVERSIBLE_BLOCKED','CREDENTIAL_BLOCKED','BAD_ACTION','UNKNOWN_TARGET'].includes(e.code)){await this.markTaskDirty(this.managedTasks.get(s.managedTaskId),'ACTION_EXCEPTION');}throw e;}
   finally{this.currentKeys.delete(idempotencyKey);this.currentLocks.delete(s.tabId);await this.actionLedger.prune();}
@@ -236,9 +248,24 @@ export class BrowserController {
     if(snapshotRevision(before)!==expectedRevision)throw new ControlError('STALE_PAGE','Page changed before reload verification',409);
     if(typeof d.reload!=='function')throw new ControlError('RELOAD_UNSUPPORTED','Browser driver cannot reload and verify persistence',503);
     await this.actionLedger.reserve(idempotencyKey,fingerprint,'verify_saved');
+    const oldProbe=typeof d.lightweightProbe==='function'?await d.lightweightProbe():null;
     await d.reload();
     let after;
-    try{after=await retryRead(()=>d.observe());this.checkSnapshot(after,s.anchors);}catch(e){
+    try{
+      const newProbe=typeof d.lightweightProbe==='function'?await d.lightweightProbe():null;
+      if(oldProbe?.documentToken!=null&&newProbe?.documentToken===oldProbe.documentToken)
+        throw new ControlError('RELOAD_NOT_NEW_DOCUMENT','Reload did not establish a new document',409);
+      after=await retryRead(()=>d.observe());this.checkSnapshot(after,s.anchors);
+      if(s.managedTaskId){
+        const t=await this.requireOwnedTask(s.managedTaskId,['BOUND']);
+        this.ensureTaskAnchors(t,t.anchors,after);
+        if(typeof d.installIdentityGuard==='function')await d.installIdentityGuard(Object.values(t.anchors),t.formGuard);
+        else if(typeof this.browser.installIdentityGuard==='function')await this.browser.installIdentityGuard(t.tabId,Object.values(t.anchors),t.formGuard);
+        else throw new ControlError('TASK_GUARD_UNAVAILABLE','Cannot install guard after reload',409);
+        const installed=typeof d.lightweightProbe==='function'?await d.lightweightProbe():await this.captureTaskProbe(t);
+        if((installed?.guardInstalled===false||(!this.localTests&&this.browser.constructor.name==='ChromeCDPBrowser'&&installed?.guardInstalled!==true))||installed?.guardDirty)throw new ControlError('TASK_GUARD_UNAVAILABLE','Reload lost the scoped active-form guard',409);
+      }
+    }catch(e){
       return {status:'SCOPE_REVALIDATION_REQUIRED',action_id:idempotencyKey,action_kind:'verify_saved',sessionTag:sha256(sessionId),poststate_verified:false,observation_returned:false};
     }
     const report=[];
@@ -258,8 +285,14 @@ export class BrowserController {
   }finally{this.currentKeys.delete(idempotencyKey);this.currentLocks.delete(s.tabId);await this.actionLedger.prune();}
  }
   // Scoped, owned Chrome tab lifecycle. No pre-existing or other client's tab is adopted.
-  async taskOpen({scope,startUrl}){
+  async taskOpen({scope,startUrl,contextBinding=null}){
     const exact=normalizedTaskScope(scope),digest=taskDigest(exact);
+    if(!this.localTests&&this.attestationGate){
+      if(!contextBinding||typeof contextBinding.conversation_state_ref!=='string'||!Number.isInteger(contextBinding.revision)||contextBinding.revision<1||typeof contextBinding.latest_event_ref!=='string'||!Array.isArray(contextBinding.consumed_state_keys)||!contextBinding.consumed_state_keys.length)
+        throw new ControlError('PROJECT_BINDING_REQUIRED','Exact current Project conversation state and consumed state keys required',409);
+      if(typeof this.contextVerifier!=='function'||(await this.contextVerifier(contextBinding))?.current!==true)
+        throw new ControlError('STALE_PROJECT_BINDING','Project context requires independent current-state verification',409);
+    }
     if(!allowedUrl(startUrl,{localTests:this.localTests}))throw new ControlError('ORIGIN_BLOCKED','New task must start on an approved Xero page',403);
     if(!this.browser.createTab||!this.browser.closeTab)throw new ControlError('TAB_LIFECYCLE_UNAVAILABLE','CDP driver must support owned create/close');
     if(this.openKeys.has(digest))throw new ControlError('TASK_ALREADY_RESERVED','Task opening already in progress',409);
@@ -274,11 +307,51 @@ export class BrowserController {
         await this.taskRegistry.transition(lease.taskId,'CREATED',{tabId:created.id});
       }catch(e){await this.taskRegistry.transition(lease.taskId,'UNCERTAIN',{tabId:created?.id||null});throw e;}
       const task={taskId:lease.taskId,tabId:created.id,digest,scope:exact,state:'CREATED',sessionId:null,anchors:null,
-        identityChecks:0,mutationCounter:0,persistedCounter:null,createdByPlugin:true,startUrl,preparedActions:0,openingHostAttested:hostReceipt.attested===true,hostFingerprint:hostReceipt.fingerprint??null};
+        identityChecks:0,mutationCounter:0,persistedCounter:null,createdByPlugin:true,startUrl,preparedActions:0,provisional:exact.returnRef==='PENDING_RETURN',contextBinding,coveragePlan:null,openingHostAttested:hostReceipt.attested===true,hostFingerprint:hostReceipt.fingerprint??null};
       this.managedTasks.set(lease.taskId,task);this.tabOwners.set(created.id,lease.taskId);
       return {taskId:lease.taskId,tabId:created.id,state:'TAB_CREATED_PENDING_BIND',scopeDigest:digest,
         requiredNext:'Navigate to exact Xero return, then bind client/FY/form/organization evidence'};
     }finally{this.openKeys.delete(digest);}
+  }
+  async taskCreateReturn({taskId,idempotencyKey,action,verifiedObligationRef,duplicateSearchRef}){
+    const t=await this.requireOwnedTask(taskId,['CREATED']);
+    if(!t.provisional)throw new ControlError('RETURN_ALREADY_IDENTIFIED','Only provisional tasks can create a new return',409);
+    if([verifiedObligationRef,duplicateSearchRef].some(x=>typeof x!=='string'||!/^[a-zA-Z0-9_.:-]{10,160}$/.test(x)))
+      throw new ControlError('RETURN_PREFLIGHT_REQUIRED','Verified obligation and current duplicate search references required',409);
+    if(!this.localTests&&this.attestationGate){if(typeof this.obligationVerifier!=='function'||(await this.obligationVerifier({scope:t.scope,verifiedObligationRef,duplicateSearchRef}))?.verified!==true)
+      throw new ControlError('RETURN_PREFLIGHT_UNVERIFIED','A separate Xero Tax obligation/duplicate check is required',409);}
+    checkKey(idempotencyKey);const a=validateAction(action);
+    if(a.kind!=='click'||!a.selector||a.x!==undefined)throw new ControlError('RETURN_CREATION_ACTION_INVALID','Explicit selected Create Draft button required',403);
+    const fingerprint=sha256(JSON.stringify({taskId,kind:'create_return',action:a,verifiedObligationRef,duplicateSearchRef}));
+    const cached=await this.actionLedger.get(idempotencyKey);
+    if(cached){if(cached.fingerprint!==fingerprint)throw new ControlError('IDEMPOTENCY_CONFLICT','Creation key reused',409);return {...cached.result,deduplicated:true};}
+    await this.assertAuthorizedWrite();
+    if(this.currentLocks.has(t.tabId))throw new ControlError('TAB_BUSY','Tab already controlled',409);
+    this.currentLocks.add(t.tabId);
+    try{const result=await this.driver(t.tabId,async d=>{
+      const target=await d.describeTarget(a);riskGuard(a,target);
+      if(!/\bcreate\b.*\b(draft|return|statement|bas|ias)\b/i.test(String(target.label||''))||target.tag!=='BUTTON')
+        throw new ControlError('RETURN_CREATION_ACTION_INVALID','Button must be explicitly identified as create draft/return',403);
+      await this.actionLedger.reserve(idempotencyKey,fingerprint,'create_return');
+      await d.perform(a,target);const snap=await d.observe();
+      if(!allowedUrl(snap.url,{localTests:this.localTests}))throw new ControlError('ORIGIN_DRIFT','Return creation left permitted Xero',409);
+      return {status:'RETURN_CREATION_REQUESTED_ID_NOT_YET_BOUND',taskId,poststate_verified:false,action_id:idempotencyKey};
+    });
+    await this.actionLedger.commit(idempotencyKey,fingerprint,result);t.preparedActions++;
+    return result;
+    }catch(e){await this.markTaskDirty(t,'RETURN_CREATION_UNCERTAIN');throw e;}finally{this.currentLocks.delete(t.tabId);}
+  }
+  async taskPromoteReturn({taskId,returnRef}){
+    const t=await this.requireOwnedTask(taskId,['CREATED']);
+    if(!t.provisional)throw new ControlError('RETURN_ALREADY_IDENTIFIED','Not a provisional return task',409);
+    const scope=normalizedTaskScope({...t.scope,returnRef});
+    const snap=await this.browser.observe(t.tabId);
+    if(!allowedUrl(snap.url,{localTests:this.localTests})||!new URL(snap.url).pathname.includes(returnRef))
+      throw new ControlError('RETURN_REF_UNPROVEN','New Xero Return ID must be independently observable in actual route',409);
+    const newDigest=taskDigest(scope);
+    await this.taskRegistry.promote(taskId,newDigest);
+    t.scope=scope;t.digest=newDigest;t.provisional=false;
+    return {taskId,state:'EXACT_RETURN_IDENTIFIED_PENDING_FIRST_BIND',scopeDigest:newDigest};
   }
   async taskNavigate({taskId,url,idempotencyKey}){
     return this.taskPrepare({taskId,idempotencyKey,action:{kind:'navigate',url}});
@@ -316,6 +389,7 @@ export class BrowserController {
     const r=await this.taskRegistry.get(taskId),t=this.managedTasks.get(taskId);
     if(!r||!t||!r.createdByPlugin||r.tabId!==t.tabId||r.scopeDigest!==t.digest||this.tabOwners.get(t.tabId)!==taskId)
       throw new ControlError('TASK_RECONCILIATION_REQUIRED','Task ownership must be independently restored; cannot borrow a tab',409);
+    if(typeof this.taskRegistry.assertLease==='function')await this.taskRegistry.assertLease(taskId);
     if(states&&!states.includes(t.state))throw new ControlError('TASK_WRONG_STATE',`Task is ${t.state}; cannot use this operation`,409);
     return t;
   }
@@ -347,19 +421,19 @@ export class BrowserController {
     if(p&&!allowedUrl(p.url,{localTests:this.localTests}))throw new ControlError('TASK_ORIGIN_DRIFT','Probe detected foreign origin',409);
     t.lastProbe=p||{url:t.boundUrl,documentToken:null};return t.lastProbe;
   }
-  async taskBind({taskId,anchors}){
+  async taskBind({taskId,anchors,formGuard}){
     const t=await this.requireOwnedTask(taskId,['CREATED']);
     await this.assertTaskTabAvailable(t);
     const snap=await retryRead(()=>this.browser.observe(t.tabId));
     const a=this.ensureTaskAnchors(t,anchors,snap);
-    if(typeof this.browser.installIdentityGuard==='function')await this.browser.installIdentityGuard(t.tabId,Object.values(a));
+    if(typeof this.browser.installIdentityGuard==='function')await this.browser.installIdentityGuard(t.tabId,Object.values(a),formGuard);
     else if(!this.localTests)throw new ControlError('TASK_GUARD_UNAVAILABLE','Production requires event-driven browser identity watcher',409);
     const probe=await this.captureTaskProbe(t);
     const sessionId=randomUUID();
     const s={tabId:t.tabId,scope:Object.freeze({project:t.scope.project,entity:t.scope.entity,period:t.scope.period,matter:t.scope.matter}),
       anchors:Object.values(a),expiresAt:this.now()+this.sessionTtlMs,managedTaskId:taskId,boundUrl:snap.url,boundProbe:probe};
     await this.taskRegistry.transition(taskId,'BOUND');
-    t.anchors=a;t.sessionId=sessionId;t.state='BOUND';t.identityChecks++;
+    t.anchors=a;t.formGuard=formGuard||null;t.sessionId=sessionId;t.state='BOUND';t.identityChecks++;
     this.sessions.set(sessionId,s);
     return {...this.present(sessionId,snap),taskId,scope:t.scope,state:'BOUND',identityCheck:'INITIAL_ONLY',
       nextFullIdentityCheck:'FINAL_OR_EXCEPTION'};
@@ -368,7 +442,7 @@ export class BrowserController {
     if(!t||t.state==='CLOSED'||t.state==='VERIFIED')return;
     t.state='NEEDS_REVALIDATION';t.persistedCounter=null;
     if(t.sessionId){const s=this.sessions.get(t.sessionId);if(s)s.invalidated=true;}
-    try{await this.taskRegistry.transition(t.taskId,'NEEDS_REVALIDATION');}catch{}
+    try{await this.taskRegistry.transition(t.taskId,'NEEDS_REVALIDATION');}catch(e){throw new ControlError('TASK_JOURNAL_WRITE_FAILED','Task revalidation state could not be persisted: '+String(e.code||'IO_ERROR'),503);}
     t.lastReason=reason;
   }
   async taskPause({taskId,reason='USER_PAUSE'}){
@@ -379,13 +453,15 @@ export class BrowserController {
     await this.taskRegistry.transition(taskId,'PAUSED');
     return {taskId,state:'PAUSED',tabId:t.tabId,next:'Explicit resume requires fresh complete client/FY/form identity check'};
   }
-  async taskResume({taskId,anchors}){
+  async taskResume({taskId,anchors,formGuard}){
     const hostReceipt=await this.assertAuthorizedWrite();
     const t=await this.requireOwnedTask(taskId,['PAUSED','NEEDS_REVALIDATION']);
+    if(!this.localTests&&this.attestationGate&&(!this.contextVerifier||(await this.contextVerifier(t.contextBinding))?.current!==true))
+      throw new ControlError('STALE_PROJECT_BINDING','Resume requires fresh original Project/workpaper binding',409);
     await this.assertTaskTabAvailable(t);
     const snap=await retryRead(()=>this.browser.observe(t.tabId));
     const a=this.ensureTaskAnchors(t,anchors||t.anchors,snap);
-    if(typeof this.browser.installIdentityGuard==='function')await this.browser.installIdentityGuard(t.tabId,Object.values(a));
+    if(typeof this.browser.installIdentityGuard==='function')await this.browser.installIdentityGuard(t.tabId,Object.values(a),formGuard||t.formGuard);
     else if(!this.localTests)throw new ControlError('TASK_GUARD_UNAVAILABLE','Production requires an installed identity watcher',409);
     const probe=await this.captureTaskProbe(t);
     if(t.sessionId)this.sessions.delete(t.sessionId);
@@ -393,11 +469,11 @@ export class BrowserController {
     const s={tabId:t.tabId,scope:{project:t.scope.project,entity:t.scope.entity,period:t.scope.period,matter:t.scope.matter},
       anchors:Object.values(a),expiresAt:this.now()+this.sessionTtlMs,managedTaskId:taskId,boundUrl:snap.url,boundProbe:probe};
     await this.taskRegistry.transition(taskId,'BOUND');
-    t.state='BOUND';t.sessionId=sessionId;t.anchors=a;t.identityChecks++;t.persistedCounter=null;t.openingHostAttested=hostReceipt.attested===true;t.hostFingerprint=hostReceipt.fingerprint??null;
+    t.state='BOUND';t.sessionId=sessionId;t.anchors=a;t.formGuard=formGuard||t.formGuard||null;t.identityChecks++;t.persistedCounter=null;t.openingHostAttested=hostReceipt.attested===true;t.hostFingerprint=hostReceipt.fingerprint??null;
     this.sessions.set(sessionId,s);
     return {...this.present(sessionId,snap),taskId,state:'RESUMED_AFTER_REVALIDATION',identityCheck:'EXCEPTION_ONLY'};
   }
-  async taskRecover({taskId,scope,anchors}){
+  async taskRecover({taskId,scope,anchors,formGuard}){
     // Restart recovery: no automatic adoption. Exact previously journaled task ID, scope hash and TAB ID required.
     const old=await this.taskRegistry.get(taskId),exact=normalizedTaskScope(scope);
     if(!old||!old.createdByPlugin||!old.tabId||old.scopeDigest!==taskDigest(exact)||old.state==='CLOSED')
@@ -405,14 +481,22 @@ export class BrowserController {
     if(this.managedTasks.has(taskId))throw new ControlError('TASK_ALREADY_ATTACHED','Use resume on the existing runtime task',409);
     if([...this.managedTasks.values()].some(t=>t.tabId===old.tabId)||this.tabOwners.has(old.tabId))throw new ControlError('TASK_TAB_CONFLICT','Another task already owns this tab',409);
     const t={taskId,tabId:old.tabId,digest:old.scopeDigest,scope:exact,state:'NEEDS_REVALIDATION',sessionId:null,
-      anchors:null,identityChecks:0,mutationCounter:0,persistedCounter:null,createdByPlugin:true};
+      anchors:null,identityChecks:0,mutationCounter:0,persistedCounter:null,coveragePlan:null,contextBinding:null,createdByPlugin:true};
     this.managedTasks.set(taskId,t);this.tabOwners.set(t.tabId,taskId);
-    try{return await this.taskResume({taskId,anchors});}
+    try{return await this.taskResume({taskId,anchors,formGuard});}
     catch(e){this.managedTasks.delete(taskId);this.tabOwners.delete(t.tabId);throw e;}
   }
   async assertManagedStable(s,d){
     if(!s.managedTaskId)return true;
     const t=await this.requireOwnedTask(s.managedTaskId,['BOUND']);
+    if(!this.localTests&&this.attestationGate){
+      if(typeof this.contextVerifier!=='function')throw new ControlError('CONTEXT_VERIFIER_UNAVAILABLE','Metadata verifier unavailable',503);
+      if((await this.contextVerifier(t.contextBinding))?.current!==true){await this.markTaskDirty(t,'PROJECT_REVISION_CHANGED');throw new ControlError('STALE_PROJECT_BINDING','Project state updated; rebase before next field batch',409);}
+    }
+    if(!this.localTests&&this.attestationGate){
+      if(typeof this.writerLeaseVerifier!=='function'||(await this.writerLeaseVerifier({taskId:t.taskId}))?.exclusive!==true)
+        throw new ControlError('WRITER_BROKER_UNAVAILABLE','Exclusive Chrome writer lease cannot be verified on the current batch',409);
+    }
     if(s.invalidated)throw new ControlError('TASK_REVALIDATION_REQUIRED','Task is paused or has changed; resume and verify identity',409);
     const probe=typeof d.lightweightProbe==='function'?await d.lightweightProbe():
       (typeof this.browser.lightweightProbe==='function'?await this.browser.lightweightProbe(s.tabId):null);
@@ -440,12 +524,56 @@ export class BrowserController {
       (field.url!==old.url&&!field.url.includes(this.managedTasks.get(s.managedTaskId)?.scope.returnRef||'NO_SUCH_RETURN')))
       throw new ControlError('TASK_REVALIDATION_REQUIRED','Form changed during batch entry',409);
   }
+  async taskPlan({taskId,sections,workpaperVersion}){
+    const t=await this.requireOwnedTask(taskId,['BOUND']);
+    if(t.coveragePlan||await this.taskRegistry.getCoverage(taskId))throw new ControlError('COVERAGE_ALREADY_FROZEN','Cannot replace an active return coverage plan',409);
+    if(!Array.isArray(sections)||sections.length<2||sections.length>120||sections.some(x=>typeof x!=='string'||!/^[a-zA-Z0-9_.-]{3,80}$/.test(x))||new Set(sections).size!==sections.length)
+      throw new ControlError('COVERAGE_PLAN_REQUIRED','Freeze at least two unique non-sensitive return section IDs',409);
+    if(typeof workpaperVersion!=='string'||!/^[a-zA-Z0-9_.:-]{10,160}$/.test(workpaperVersion))throw new ControlError('WORKPAPER_VERSION_REQUIRED','Exact versioned source workpaper reference required',409);
+    const plan={sections:[...sections],planDigest:sha256(JSON.stringify({resource:t.digest,sections,workpaperVersion})),verified:[]};
+    await this.taskRegistry.recordCoverage(t.taskId,plan);t.coveragePlan=plan;
+    return {taskId,planDigest:plan.planDigest,sections:sections.length,state:'COVERAGE_FROZEN'};
+  }
+  async taskCheckpoint({taskId,sectionId,verifyActionKey}){
+    const t=await this.requireOwnedTask(taskId,['BOUND']);
+    const plan=await this.taskRegistry.getCoverage(taskId);
+    if(!plan||!plan.sections.includes(sectionId))throw new ControlError('SECTION_NOT_IN_PLAN','Unknown mandatory return section',409);
+    checkKey(verifyActionKey);
+    const receipt=await this.actionLedger.get(verifyActionKey);
+    if(receipt?.result?.status!=='DRAFT_PERSISTENCE_VERIFIED'||receipt.result?.sessionTag!==sha256(t.sessionId)||t.persistedCounter!==t.mutationCounter)
+      throw new ControlError('SECTION_SAVE_EVIDENCE_REQUIRED','Only persisted same-session Xero Save/reload evidence may close a section',409);
+    const receiptHash=sha256(JSON.stringify({key:verifyActionKey,receipt:receipt.result,resource:t.digest}));
+    if(plan.verified.some(x=>x.receiptHash===receiptHash&&x.sectionId!==sectionId))
+      throw new ControlError('COVERAGE_REUSED_SAVE','One Save/reload proof cannot verify multiple distinct return sections',409);
+    const verified=plan.verified.filter(x=>x.sectionId!==sectionId);
+    verified.push({sectionId,receiptHash});
+    const updated={...plan,verified};await this.taskRegistry.recordCoverage(taskId,updated);t.coveragePlan=updated;
+    return {taskId,sectionId,state:'SECTION_PERSISTENCE_CHECKPOINTED',sectionsVerified:verified.length,sectionsRequired:plan.sections.length};
+  }
+  async taskReviewApprove({taskId,reviewReceipt}){
+    const t=await this.requireOwnedTask(taskId,['REVIEW']);
+    if(!this.localTests&&this.attestationGate){if(typeof this.contextVerifier!=='function'||(await this.contextVerifier(t.contextBinding))?.current!==true)
+      throw new ControlError('STALE_PROJECT_BINDING','Review cannot approve a superseded Project workpaper revision',409);}
+    if(!this.reviewPublicKey)throw new ControlError('INDEPENDENT_VERIFIER_UNAVAILABLE','Separate tax reviewer public key not installed',503);
+    const cov=await this.taskRegistry.getCoverage(taskId);
+    if(!cov||!reviewReceipt||reviewReceipt.taskDigest!==t.digest||reviewReceipt.planDigest!==cov.planDigest||reviewReceipt.coverageDigest!==sha256(JSON.stringify(cov.verified))||reviewReceipt.verdict!=='PASS'||reviewReceipt.verifier!=='XERO_TAX_DOMAIN_REVIEW')
+      throw new ControlError('DOMAIN_REVIEW_INVALID','Signed independent tax review mismatches immutable task scope/coverage',409);
+    const message=JSON.stringify({taskDigest:t.digest,planDigest:cov.planDigest,coverageDigest:reviewReceipt.coverageDigest,verdict:'PASS',verifier:'XERO_TAX_DOMAIN_REVIEW'});
+    let valid=false;try{valid=verifySignature(null,Buffer.from(message),this.reviewPublicKey,Buffer.from(reviewReceipt.signature,'base64'));}catch{}
+    if(!valid)throw new ControlError('DOMAIN_REVIEW_SIGNATURE_INVALID','Independent verifier signature failed',403);
+    await this.taskRegistry.transition(taskId,'VERIFIED');t.state='VERIFIED';
+    return {taskId,state:'DOMAIN_REVIEW_VERIFIED',tax_return_ready_for_human_review:true};
+  }
   async taskFinish({taskId,expectedFields,closeTab=true}){
-    await this.assertAuthorizedWrite();
     const t=await this.requireOwnedTask(taskId,['BOUND']);
     const s=this.getSession(t.sessionId);
+    await this.assertAuthorizedWrite({sessionId:t.sessionId,force:true});
     if(t.persistedCounter===null||t.persistedCounter!==t.mutationCounter)
       throw new ControlError('TASK_UNSAVED_OR_UNVERIFIED','Finish requires verified Save/reload after the last field mutation',409);
+    const coverage=await this.taskRegistry.getCoverage(taskId);
+    if(!coverage||coverage.sections.length<2||coverage.sections.some(x=>!coverage.verified.some(r=>r.sectionId===x)))
+      throw new ControlError('FULL_RETURN_COVERAGE_MISSING','All frozen return sections require persisted verification',409);
+    if(closeTab)throw new ControlError('DOMAIN_REVIEW_REQUIRED','Final UI audit cannot automatically close a tax return before independent review',409);
     if(!Array.isArray(expectedFields)||!expectedFields.length||expectedFields.length>12||expectedFields.some(f=>typeof f.selector!=='string'||typeof f.text!=='string'))
       throw new ControlError('TASK_FINAL_FIELDS_REQUIRED','Final form audit requires 1-12 expected field values',409);
     if(this.currentLocks.has(t.tabId))throw new ControlError('TAB_BUSY','Cannot finish while a write is in progress',409);
@@ -456,14 +584,12 @@ export class BrowserController {
       for(const f of expectedFields){const actual=await this.browser.readField(t.tabId,f.selector);
         if(actual?.count!==1||actual?.value!==f.text)throw new ControlError('TASK_FINAL_FIELD_MISMATCH','Final field values do not match persisted expected data',409);
       }
-      t.identityChecks++;await this.captureTaskProbe(t);t.state='VERIFIED';await this.taskRegistry.transition(taskId,'VERIFIED');
+      t.identityChecks++;await this.captureTaskProbe(t);t.state='REVIEW';await this.taskRegistry.transition(taskId,'REVIEW');
     }catch(e){await this.markTaskDirty(t,'FINAL_VERIFICATION_FAILED');throw e;}
     finally{this.currentLocks.delete(t.tabId);}
-    let closing=null;
-    if(closeTab)closing=await this.taskClose({taskId});
     return {taskId,scopeDigest:t.digest,formType:t.scope.formType,fy:t.scope.fy,
-      state:closing?.closed?'VERIFIED_AND_CLOSED':'VERIFIED',final_identity_checked:true,persisted:true,
-      tab_closed:Boolean(closing?.closed),identity_checks:t.identityChecks};
+      state:'UI_AUDIT_COMPLETE_AWAITING_DOMAIN_REVIEW',final_identity_checked:true,persisted_sections:coverage.verified.length,full_return_ready:false,
+      tab_closed:false,identity_checks:t.identityChecks};
   }
   async taskClose({taskId}){
     const t=await this.requireOwnedTask(taskId,['VERIFIED','CREATED']);

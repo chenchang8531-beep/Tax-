@@ -1,7 +1,7 @@
 # Staged Windows desktop process. Does NOT modify Chrome, CCOS or Xero.
 param(
  [string]$Root=(Join-Path $env:LOCALAPPDATA 'LimingBrowserDirect'),
- [string]$Version='0.4.0',
+ [string]$Version='0.5.0',
  [Parameter(Mandatory=$true)][string]$ExpectedUserDataDir,
  [string]$ExpectedProfileDirectory='',
  [string]$ExpectedChromeExe=''

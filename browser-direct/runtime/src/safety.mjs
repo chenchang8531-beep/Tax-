@@ -61,3 +61,24 @@ export function requireExactScope(scope) {
   }
   return Object.freeze({project:scope.project,entity:scope.entity,period:scope.period,matter:scope.matter});
 }
+
+// A no-dangerous-keyword check is insufficient: generic OK/Confirm/Continue buttons
+// may be irreversible. Production UI acts only on these bounded Draft-phase intents.
+export function draftActionAllowlist(action,element={}){
+ const kind=action.kind;
+ if(['wait','scroll','hover'].includes(kind))return true;
+ if(kind==='navigate'){if(!allowedUrl(action.url))throw new ControlError('DRAFT_ACTION_UNCLASSIFIED','Navigation outside allowed Xero context',403);return true;}
+ if(kind==='select'){if(element.tag!=='SELECT')throw new ControlError('DRAFT_ACTION_UNCLASSIFIED','Only native labeled Select controls allowed',403);return true;}
+ if(kind==='press'){
+  if(!['Tab','Escape','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(action.key))throw new ControlError('DRAFT_ACTION_UNCLASSIFIED','Unclassified keyboard mutation',403);
+  return true;
+ }
+ if(['click','double_click'].includes(kind)){
+  if(element.tag==='A'&&allowedUrl(element.href))return true;
+  const label=String(element.label||'').trim().toLocaleLowerCase();
+  if(element.tag==='BUTTON'&&/^(save(?: draft| changes)?|next|back|previous|edit|view|expand|collapse|show details|hide details|add worksheet)$/i.test(label))return true;
+  throw new ControlError('DRAFT_ACTION_UNCLASSIFIED','Only explicitly classified Draft edit/navigation controls may be clicked',403);
+ }
+ if(kind==='drag')throw new ControlError('DRAFT_ACTION_UNCLASSIFIED','Unknown drag effects are not authorised on a tax form',403);
+ return false;
+}

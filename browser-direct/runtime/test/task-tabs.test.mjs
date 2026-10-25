@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
+import {generateKeyPairSync,sign} from 'node:crypto';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {BrowserController} from '../src/controller.mjs';
@@ -30,6 +31,25 @@ async function start(i='a',ref='ret-001',browser=new MultiBrowser(),options={}){
  return {c,browser,opened,bound};
 }
 const rejects=(fn,code)=>assert.rejects(fn,e=>e.code===code);
+async function completeUI(c,taskId,verifyKey,expectedFields){
+ const {publicKey,privateKey}=generateKeyPairSync('ed25519');c.reviewPublicKey=publicKey;
+ const plan=await c.taskPlan({taskId,sections:['income-section','deduction-section'],workpaperVersion:'synthetic-source-v0001'});
+ await c.taskCheckpoint({taskId,sectionId:'income-section',verifyActionKey:verifyKey});
+ const t=c.managedTasks.get(taskId),moreSave='second-save-'+verifyKey,moreRead='second-read-'+verifyKey;
+ const saved=await c.act({sessionId:t.sessionId,idempotencyKey:moreSave,action:{kind:'click',selector:'#save'},expectedPoststate:{visibleTextIncludes:['Saved synthetic draft']}});
+ const persisted=await c.verifySaved({sessionId:t.sessionId,expectedRevision:saved.after.revision,idempotencyKey:moreRead,saveActionKey:moreSave,fields:expectedFields});
+ assert.equal(persisted.status,'DRAFT_PERSISTENCE_VERIFIED');
+ await c.taskCheckpoint({taskId,sectionId:'deduction-section',verifyActionKey:moreRead});
+ const ui=await c.taskFinish({taskId,expectedFields,closeTab:false});
+ assert.equal(ui.state,'UI_AUDIT_COMPLETE_AWAITING_DOMAIN_REVIEW');
+ const coverage=await c.taskRegistry.getCoverage(taskId);
+ const coverageDigest=(await import('../src/safety.mjs')).sha256(JSON.stringify(coverage.verified));
+ const payload={taskDigest:t.digest,planDigest:plan.planDigest,coverageDigest,verdict:'PASS',verifier:'XERO_TAX_DOMAIN_REVIEW'};
+ const reviewReceipt={...payload,signature:sign(null,Buffer.from(JSON.stringify(payload)),privateKey).toString('base64')};
+ const review=await c.taskReviewApprove({taskId,reviewReceipt});assert.equal(review.state,'DOMAIN_REVIEW_VERIFIED');
+ return {ui,review};
+}
+
 test('owned tab opens, binds exact client/FY/form/organisation/return; first and final identity checks only',async()=>{
  const {c,browser,opened,bound}=await start();
  assert.notEqual(opened.tabId,'preexisting');assert.equal(c.managedTasks.get(opened.taskId).identityChecks,1);
@@ -41,8 +61,8 @@ test('owned tab opens, binds exact client/FY/form/organisation/return; first and
  assert.equal(save.status,'POSTSTATE_VERIFIED');assert.equal(c.managedTasks.get(opened.taskId).identityChecks,1);
  const verify=await c.verifySaved({sessionId:bound.sessionId,expectedRevision:save.after.revision,idempotencyKey:'task-identity-reload-0001',saveActionKey:'task-identity-save-0001',fields:[{selector:'#income',text:'100'},{selector:'#expenses',text:'20'}]});
  assert.equal(verify.status,'DRAFT_PERSISTENCE_VERIFIED');
- const final=await c.taskFinish({taskId:opened.taskId,expectedFields:[{selector:'#income',text:'100'},{selector:'#expenses',text:'20'}],closeTab:true});
- assert.equal(final.state,'VERIFIED_AND_CLOSED');assert.equal(final.identity_checks,2);
+ const {ui:final}=await completeUI(c,opened.taskId,'task-identity-reload-0001',[{selector:'#income',text:'100'},{selector:'#expenses',text:'20'}]);
+ assert.equal(final.identity_checks,2);await c.taskClose({taskId:opened.taskId});
  assert.deepEqual(browser.closed,[opened.tabId]);assert.equal(browser.tabsMap.has('preexisting'),true);
 });
 test('concurrent different clients own separate tabs; same scope cannot be opened twice',async()=>{
@@ -108,7 +128,7 @@ test('task scope rejects guessed year, unverified return identity and disallowed
 test('Chrome host identity readback occurs at task open and final/recovery, not every normal input',async()=>{
  const b=new MultiBrowser();let probes=0;
  const attestationGate={assertAllowed:async()=>{probes++;return {attested:true,fingerprint:'host-test'};},check:async()=>({attested:true})};
- const c=new BrowserController(b,{attestationGate,requireManagedTasks:true});
+ const c=new BrowserController(b,{attestationGate,requireManagedTasks:true,localTests:true});
  const opened=await c.taskOpen({scope:client(),startUrl:url('ret-001')});
  await c.taskBind({taskId:opened.taskId,anchors:anchors()});
  assert.equal(probes,1);
@@ -118,7 +138,7 @@ test('Chrome host identity readback occurs at task open and final/recovery, not 
  const persisted=await c.verifySaved({sessionId:sid,expectedRevision:save.after.revision,idempotencyKey:'host-check-readback-0001',saveActionKey:'host-check-save-0001',fields:[{selector:'#amount',text:'100'}]});
  assert.equal(persisted.status,'DRAFT_PERSISTENCE_VERIFIED');
  assert.equal(probes,1,'No expensive host identity readback during uninterrupted typing, Save, or field-value verification');
- await c.taskFinish({taskId:opened.taskId,expectedFields:[{selector:'#amount',text:'100'}],closeTab:true});
+ await completeUI(c,opened.taskId,'host-check-readback-0001',[{selector:'#amount',text:'100'}]);await c.taskClose({taskId:opened.taskId});
  assert.equal(probes,3,'Host checked at final and before owned tab close');
 });
 test('identity task key blocks duplicate same return despite different descriptive matter labels',async()=>{
@@ -147,8 +167,8 @@ test('final close refuses changed/reused Chrome target and preserves other clien
  await c.fillFields({sessionId:bound.sessionId,idempotencyKey:'changed-tab-fill-0001',fields:[{selector:'#amount',text:'200'}]});
  const save=await c.act({sessionId:bound.sessionId,idempotencyKey:'changed-tab-save-0001',action:{kind:'click',selector:'#save'},expectedPoststate:{visibleTextIncludes:['Saved synthetic draft']}});
  await c.verifySaved({sessionId:bound.sessionId,expectedRevision:save.after.revision,idempotencyKey:'changed-tab-reload-0001',saveActionKey:'changed-tab-save-0001',fields:[{selector:'#amount',text:'200'}]});
- const final=await c.taskFinish({taskId:opened.taskId,expectedFields:[{selector:'#amount',text:'200'}],closeTab:false});
- assert.equal(final.state,'VERIFIED');
+ const {ui:final}=await completeUI(c,opened.taskId,'changed-tab-reload-0001',[{selector:'#amount',text:'200'}]);
+ assert.equal(final.state,'UI_AUDIT_COMPLETE_AWAITING_DOMAIN_REVIEW');
  browser.tabsMap.get(opened.tabId).doc++;
  await rejects(()=>c.taskClose({taskId:opened.taskId}),'TASK_TAB_CHANGED');
  assert.deepEqual(browser.closed,[]);

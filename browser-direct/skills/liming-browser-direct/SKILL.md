@@ -1,26 +1,30 @@
 ---
 name: liming-browser-direct
-description: Control an authorised Chrome 9222 Xero Tax or Accounting task using one newly created task-owned Tab per exact client, legal entity, financial year, form and return. Use for browser open/bind, fast form entry, per-field readback, pause/resume, multi-client Tab isolation and final Save/reload and exact-tab closure, only when the private MCP runtime is genuinely connected.
+description: Execute a frontend-authorised Xero Tax, Accounting or Payroll Draft in an exclusively owned Chrome 9222 tab, bound to exact client, Xero organisation, FY, form and Return ID. Use for provisional creation, rapid field entry, full return coverage tracking, interruption recovery, persisted Save/reload verification, independent review and guarded tab closure when the actual private MCP runtime is connected.
 ---
-# Liming Browser Direct v0.4.0
+# Liming Browser Direct v0.5.0
 
-## Owners and live gates
+## Authority and live gating
 
-The existing Liming Executive owns decisions and permissions; Xero Tax/Accounting/Payroll Skills own tax/accounting treatment; this Skill owns only safe, deterministic browser operations. This private plugin package does not prove a Server/Tunnel/host MCP tool is connected. Verify actual tool exposure and authenticated Windows Chrome 9222 Profile before browser write.
+Liming Executive owns user intent and scope. Xero AU Tax Operations owns obligations, forms, return placement/rollups and tax QA; this Skill owns only the browser actuator. Never infer a working Windows/Tunnel connection from Plugin installation, GitHub tests or a healthy CCOS port. Require current authenticated front-end MCP tools, exact Project `context_binding`, live Chrome 9222 PID/profile attestation, a shared one-writer broker and actual browser readback before production writes. Absent any gate => BLOCKED for that branch. No Lodge, Submit, Send, Sign, Pay, Delete, passwords/MFA or hidden API actions.
 
-## User-corrected identity frequency
+## Frequency of identity verification
 
-Do **one comprehensive initial identity bind**, **normal uninterrupted fast entry without rechecking client/FY/form identity per field**, and **one comprehensive final identity/readback before closing**. During normal actions, use only the exact owned Tab target ID, a lightweight document/route token, event-driven DOM identity-change watcher and field-value comparisons. Full identity check on exceptions only: pause/resume, error, lost/replaced Chrome target, unexpected navigation/DOM takeover, interruption, stale scope, process restart or verified user correction. Do not invent repeated checks as safety; do not remove cheap continuity guards.
+1. Initial complete identity verification: exact client/legal entity, organisation, FY/period, form family and Return ID; install watcher on **active return form DOM** only. A header outside the active form cannot prove identity.
+2. Uninterrupted fast work: reuse the task-owned target ID, lightweight route/document/guard status and exact per-field value readback. No comprehensive client scan before every field or click. Independently verify Project revision metadata per batch without a full page identity scan.
+3. After pause, error, changed tab/document/form, browser restart or changed Project revision: stop, recover the exact lease, verify full identity and reinstall the scoped watcher. On Save/reload verify a **new document** and reinstall watcher before continuing.
+4. After all planned sections: final full identity and persisted field audit. This is UI-only; do not call the entire return complete until a separate tax domain verifier signs a matching plan/coverage receipt.
 
-## Action sequence
+## Mandatory workflow
 
-1. Confirm exact Project + opaque client/legal entity references, `entity`, `entityType`, FY/statement `period`, `formType`, Xero organisation ID/display label, specific `returnRef` and matter from verified sources. Never store TFNs, bank accounts, credentials or raw tax values in task IDs or journals.
-2. Call `browser_task_open({scope,startUrl})` to create a unique dedicated Xero Tab. Never adopt an arbitrary existing tab or use the currently active Chrome window. The persistent ownership ledger prevents same-return duplicate sessions while allowing **different clients at the same time**.
-3. For initial navigation use only `browser_task_prepare` / `browser_task_navigate` with an explicit, safe Xero URL/link and idempotency; no pre-bind form mutation. Call `browser_task_bind` once when the exact return is visible, with named `anchors:{client,year,form,organization,returnRef}`. All five anchors must reconcile to the selected task. Save `taskId`, owned `tabId` and `sessionId` in the task continuation.
-4. Use `browser_fill_fields` (up to 12 exact selectors) or `browser_act` on the bound session without full identity scanning per step. For high-risk controls, stop. Exact per-field readback, selection validation, idempotent WAL and no blind retries remain mandatory. If a DOM identity watcher or Tab/document token indicates drift, halt immediately; use `browser_task_resume` for full revalidation. A benign browser or tool observation is not tax-form verification.
-5. A Save click needs an explicit observed `POSTSTATE_VERIFIED` receipt. `browser_verify_saved` then reloads the exact owned return and checks persisted values (not only visible unsaved inputs). Once the form is complete, `browser_task_finish` performs final full client/FY/form/org/return verification and final expected field audit. It may auto-close **only its own** Tab after success; other clients' Tabs remain untouched.
-6. `browser_task_pause` retains the dedicated Tab without allowing writes. On process crash use `browser_task_recover` only for the exact persistent task ID/Tab/scope with fresh identity evidence. Unresolved errors/identity/close outcomes stay OPEN; never generate duplicate return tabs or replay an uncertain Save/Lodge.
+- First freeze the exact task scope: `project`, safe `clientRef`, `legalEntityRef`, `entity`, `entityType`, `fy`, `period`, `formType`, `matter`, canonical `xeroOrgRef`, `xeroOrgLabel`, and `returnRef` plus current Project binding. For a new return use `PENDING_RETURN` and retain evidence of exact current obligation and duplicate search.
+- `browser_task_open` creates a plugin-owned new Tab; atomic canonical resource claim excludes Project labels and aliases. Never adopt somebody else's Xero Tab. A second writer with an already claimed organisation/Return must not proceed.
+- For a new return, use `browser_task_create_return` only after independently verified obligation + no duplicate evidence, then `browser_task_promote_return` once actual new Return ID is visible in the route. Absent verification stop; never invent a Return ID.
+- `browser_task_bind({taskId,anchors,formGuard})` must use named identity anchors and a unique `formGuard:{formSelector,identitySelector,identityText}` pointing **inside the active form** for production CDP. `browser_task_plan` freezes all required return section IDs and an authoritative source-workpaper version.
+- Fill in small batches with `browser_fill_fields` or safe `browser_act`, source-backed precise field types and idempotency. `browser_verify_saved` requires a verified same-session Save and **new loader/document** readback; `browser_task_checkpoint` associates a planned section with a distinct persisted verification receipt. Never reuse the same Save/reload receipt across different sections.
+- `browser_task_finish({taskId,expectedFields,closeTab:false})` verifies final visible identity/values only after all mandatory sections are checkpointed. It returns `UI_AUDIT_COMPLETE_AWAITING_DOMAIN_REVIEW`, leaves Tab open, and is NOT tax outcome DONE. `browser_task_review_approve` accepts only a cryptographically verified receipt signed by the independent Xero Tax domain review owner, matching task/coverage digests. Only then may `browser_task_close` close and re-read the exact plugin-created Tab target.
+- Resume by `browser_task_pause/resume/recover` only from exact durable task ID/lease. An unconfirmed write, journal corruption, old Project binding, takeover or unknown return identity stays OPEN; never auto-replay it.
 
-## Hard stops
+## Deployment details
 
-No Lodge/Submit/Send/Pay/Sign/Delete, registrations, credentials, MFA or uncontrolled API writes. Do not assume private tab journal controls other independent CCOS/CDP operators; coordinate external single-writer ownership before Live. See `references/action-contract.md`, `references/integration.md`, and plugin root `docs/TAB_TASK_BINDING.md`.
+See `references/action-contract.md`, `references/integration.md`, and the plugin root `docs/TAB_TASK_BINDING.md`, `docs/TUNNEL_DEPLOY.md`, `docs/VERIFICATION.md`. The private gateway must present genuine TLS, have a durable journal, distinct frontend/agent/local credentials and an authenticated ChatGPT connector. Source package and CI PASS are not Windows Live proof.
