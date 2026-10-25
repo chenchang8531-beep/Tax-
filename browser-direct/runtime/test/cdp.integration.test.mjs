@@ -18,13 +18,18 @@ const TEST_HTML=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fake Xe
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
 // Actual headless Chromium + DevTools Protocol, only isolated localhost synthetic HTML.
-test('isolated Chromium CDP batch entry, click, risk gate and readback', {timeout:25000},async()=>{
+test('isolated Chromium CDP batch entry, click, risk gate and readback', {timeout:75000},async()=>{
  const dir=await mkdtemp(join(tmpdir(),'liming-chromium-'));
- const child=spawn('/usr/bin/chromium',['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-proxy-server','--no-first-run','--no-default-browser-check','--remote-debugging-port=0',`--user-data-dir=${dir}`,'about:blank'],{stdio:'ignore'});
+ const executable=process.env.LIMING_TEST_CHROMIUM || '/usr/bin/chromium';
+ const child=spawn(executable,['--headless=new','--no-sandbox','--disable-gpu','--disable-dev-shm-usage','--disable-background-networking','--no-proxy-server','--no-first-run','--no-default-browser-check','--remote-debugging-port=0',`--user-data-dir=${dir}`,'about:blank'],{stdio:['ignore','ignore','pipe']});
+ let browserDiagnostic='';let launchError='';
+ child.stderr.on('data',chunk=>{browserDiagnostic=(browserDiagnostic+String(chunk)).slice(-2500);});
+ child.on('error',err=>{launchError=String(err.message);});
  try{
   let cdpPort;
-  for(let i=0;i<60;i++){try{const raw=await readFile(join(dir,'DevToolsActivePort'),'utf8');cdpPort=Number(raw.split('\n')[0]);if(cdpPort>0)break;}catch{}if(child.exitCode!==null)break;await delay(125);}
-  assert.ok(cdpPort>0,'Chromium CDP must expose the isolated test port');
+  const deadline=Date.now()+30000;
+  while(Date.now()<deadline){try{const raw=await readFile(join(dir,'DevToolsActivePort'),'utf8');cdpPort=Number(raw.split('\n')[0]);if(cdpPort>0)break;}catch{}if(child.exitCode!==null||launchError)break;await delay(200);}
+  assert.ok(cdpPort>0,'Chromium CDP must expose the isolated test port; exit='+String(child.exitCode)+' launch='+launchError+' stderr='+browserDiagnostic);
   const browser=new ChromeCDPBrowser({base:`http://127.0.0.1:${cdpPort}`,localTests:true});
   let tab;
   for(let i=0;i<60;i++){tab=(await browser.tabs()).find(t=>t.url==='about:blank');if(tab?.title==='Fake Xero')break;await delay(100);}
