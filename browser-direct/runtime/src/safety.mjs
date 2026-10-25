@@ -45,6 +45,7 @@ export function riskGuard(action, element = {}) {
   if (DANGEROUS.test(label)) throw new ControlError('IRREVERSIBLE_BLOCKED', 'High-risk control is blocked; requires separate authorized workflow', 403);
   if (element.pointerOccluded) throw new ControlError('TARGET_OCCLUDED', 'Another control is covering the intended browser target', 409);
   if (element.password || element.type === 'password' || element.isEditableSecret) throw new ControlError('CREDENTIAL_BLOCKED', 'Credential fields are not operated by this plugin', 403);
+  if (action.kind === 'press' && action.key === 'Enter' && element.inForm) throw new ControlError('FORM_SUBMIT_KEY_BLOCKED','Enter may submit the entire form; use an explicitly identified control',403);
   if (action.kind === 'press' && BLOCKED_KEYS.has(action.key)) throw new ControlError('BLOCKED_KEY', 'Unapproved browser key', 403);
   if (action.kind === 'navigate' && DANGEROUS.test(new URL(action.url).pathname.replaceAll('/', ' '))) throw new ControlError('IRREVERSIBLE_BLOCKED', 'High-risk navigation blocked', 403);
   if ((['click','double_click','press','drag'].includes(action.kind)) && !label.trim()) throw new ControlError('UNKNOWN_TARGET', 'Target has no inspectable label', 403);

@@ -56,7 +56,7 @@ function nodeTargetScript(action){
    return {label:String(el.getAttribute('aria-label')||el.labels?.[0]?.innerText||el.innerText||el.value||'').slice(0,220),
      text:String(el.innerText||'').slice(0,180), title:String(el.title||'').slice(0,120),
      ariaLabel:String(el.getAttribute('aria-label')||'').slice(0,180),href:String(el.href||'').slice(0,300),
-     formAction:String(parentForm?.action||'').slice(0,300),type:String(el.type||''),role:String(el.getAttribute('role')||''),tag:el.tagName,
+     formAction:String(parentForm?.action||'').slice(0,300),inForm:Boolean(parentForm),type:String(el.type||''),role:String(el.getAttribute('role')||''),tag:el.tagName,
      password:el.type==='password',isEditableSecret:Boolean(el.matches('input[autocomplete="current-password"], input[autocomplete="new-password"]')),pointerOccluded,visible,disabled:Boolean(el.disabled),x:r.x+r.width/2,y:r.y+r.height/2,
      inViewport:r.x>=0&&r.y>=0&&r.x+r.width<=innerWidth+1&&r.y+r.height<=innerHeight+1,
      width:r.width,height:r.height};
@@ -186,9 +186,20 @@ export class ChromeCDPBrowser {
     }
   }
   async transaction(tabId,fn){return this.withTab(tabId,async c=>fn({
-    observe:()=>this.observeOn(c),describeTarget:a=>this.describeTargetOn(c,a),readField:s=>this.readFieldOn(c,s),
+    observe:()=>this.observeOn(c),describeTarget:a=>this.describeTargetOn(c,a),readField:s=>this.readFieldOn(c,s),reload:()=>this.reloadOn(c),
     setField:(f,m)=>this.setFieldOn(c,f,m),perform:(a,el)=>this.performOn(c,a,el)
   }));}
+  async reloadOn(c){
+    await this.assertOrigin(c);
+    await c.send('Page.reload',{ignoreCache:false});
+    // Reload completion is confirmed by a successful DOM observation, never by Page.reload ACK alone.
+    let last;
+    for(let i=0;i<35;i++){
+      await new Promise(r=>setTimeout(r,200));
+      try{const ready=await this.evaluate(c,'document.readyState');if(ready==='complete'){await this.assertOrigin(c);return;}}catch(e){last=e;}
+    }
+    throw new ControlError('RELOAD_TIMEOUT','Chrome reload did not reach a stable document',504);
+  }
   async observe(tabId){return this.withTab(tabId,c=>this.observeOn(c));}
   async describeTarget(tabId,action){return this.withTab(tabId,c=>this.describeTargetOn(c,action));}
   async readField(tabId,selector){return this.withTab(tabId,c=>this.readFieldOn(c,selector));}

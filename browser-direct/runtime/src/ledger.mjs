@@ -4,7 +4,7 @@ import {ControlError} from './safety.mjs';
 
 // The ledger intentionally stores no browser form values, screenshots, or authentication material.
 const safeResult = result => {
-  const r={status:result.status,action_id:result.action_id,action_kind:result.action_kind,
+  const r={status:result.status,action_id:result.action_id,action_kind:result.action_kind,sessionTag:result.sessionTag,
     observation_returned:Boolean(result.observation_returned),poststate_verified:Boolean(result.poststate_verified),
     field_values_verified:Boolean(result.field_values_verified),
     fields:Array.isArray(result.fields)?result.fields.map(x=>({index:x.index,status:x.status,mode:x.mode||null})):undefined,

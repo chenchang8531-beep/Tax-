@@ -1,16 +1,18 @@
 {
   "name": "liming-browser-direct-runtime",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22.5.0"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs",
-    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test test/*.test.mjs",
-    "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs",
-    "start": "node src/mcp-server.mjs"
+    "test": "node --test test/*.test.mjs ../tunnel/test/*.test.mjs",
+    "test:coverage": "node --experimental-test-coverage --test-coverage-lines=80 --test test/*.test.mjs ../tunnel/test/*.test.mjs",
+    "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs test/attestation.test.mjs test/persistence.test.mjs ../tunnel/test/*.test.mjs",
+    "start": "node src/mcp-server.mjs",
+    "start:gateway": "node ../tunnel/gateway.mjs",
+    "start:agent": "node ../tunnel/agent.mjs"
   },
-  "description": "Frontend-directed local-only MCP browser actuator for Chrome CDP 9222; no external service dependencies"
+  "description": "Local loopback browser MCP + separate outbound reverse-tunnel client and HTTPS-edge gateway; Node >=22.5; zero third-party runtime dependencies"
 }

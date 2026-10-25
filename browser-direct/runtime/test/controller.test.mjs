@@ -113,3 +113,7 @@ test('frontend-driven drag is bounded and reversible, cannot bypass risk label c
  const r=await c.act({sessionId:s.sessionId,expectedRevision:s.revision,action:{kind:'drag',x:100,y:200,toX:120,toY:280},idempotencyKey:'action-key-0012'});
  assert.equal(r.action_kind,'drag');assert.equal(browser.calls,1);
 });
+
+test('form Enter key is blocked because pressing Enter can submit an entire return',()=>{
+ assert.throws(()=>riskGuard({kind:'press',selector:'input',key:'Enter'},{label:'Amount',tag:'INPUT',inForm:true}),e=>e.code==='FORM_SUBMIT_KEY_BLOCKED');
+});

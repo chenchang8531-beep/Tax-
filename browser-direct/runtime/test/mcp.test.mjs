@@ -20,10 +20,21 @@ test('HTTP server refuses unauthenticated requests and foreign Origins',async()=
   const foreign=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,Origin:'https://evil.example'},body:JSON.stringify(data)});
   assert.equal(foreign.status,403);
   const ok=await fetch(url,{method:'POST',headers:{Authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(data)});
-  assert.equal(ok.status,200);assert.equal((await ok.json()).result.tools.length,7);
+  assert.equal(ok.status,200);assert.equal((await ok.json()).result.tools.length,8);
  }finally{await new Promise(r=>api.server.close(r));}
 });
 test('HTTP unrecognized methods cannot execute browser actions',async()=>{
  const a=await dispatchMcp({jsonrpc:'2.0',id:9,method:'arbitrary/execute'},fake);
  assert.equal(a.error.code,-32601);
+});
+
+test('readiness reports profile and durable ledger truth, not a static manual flag',async()=>{
+ const ctl={...fake,status:async()=>({cdp_reachable:true,profile_attested:false,wal_durable:true,owner_attestation:{reason:'PROFILE_MISMATCH'}})};
+ const api=createServer({token,controller:ctl,port:0});const a=await api.listen();
+ try{
+  const url=`http://127.0.0.1:${a.port}/readyz`;
+  assert.equal((await fetch(url)).status,401);
+  const r=await fetch(url,{headers:{Authorization:`Bearer ${token}`}});
+  assert.equal(r.status,200);const json=await r.json();assert.equal(json.write_ready,false);assert.equal(json.profile_reason,'PROFILE_MISMATCH');
+ }finally{await new Promise(r=>api.server.close(r));}
 });

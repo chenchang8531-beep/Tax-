@@ -46,15 +46,21 @@ function assertPoststate(after,predicate){
 }
 
 export class BrowserController {
- constructor(browser,{profileAttested=false,localTests=false,now=Date.now,sessionTtlMs=30*60*1000,ledger=new MemoryActionLedger({now})}={}){
-  this.browser=browser;this.profileAttested=profileAttested;this.localTests=localTests;this.now=now;this.sessionTtlMs=sessionTtlMs;
+ constructor(browser,{profileAttested=false,attestationGate=null,localTests=false,now=Date.now,sessionTtlMs=30*60*1000,ledger=new MemoryActionLedger({now})}={}){
+  this.browser=browser;this.profileAttested=profileAttested;this.attestationGate=attestationGate;this.localTests=localTests;this.now=now;this.sessionTtlMs=sessionTtlMs;
   this.sessions=new Map();this.currentLocks=new Set();this.currentKeys=new Set();this.actionLedger=ledger;
  }
+ async assertAuthorizedWrite(){
+  if(this.attestationGate)return this.attestationGate.assertAllowed();
+  if(!this.profileAttested)throw new ControlError('PROFILE_NOT_ATTESTED','Chrome 9222 process owner must be independently attested',403);
+  return {attested:true,reason:'INJECTED_TEST_ATTESTATION'};
+ }
  async status(){
+  const owner=this.attestationGate?await this.attestationGate.check():{attested:this.profileAttested,reason:this.localTests?'SYNTHETIC_TEST':'NO_LIVE_OWNER_PROBE'};
   let cdp_reachable=false,xero_tabs_count=0,cdp_error=null;
   try{const tabs=await this.tabs();cdp_reachable=true;xero_tabs_count=tabs.length;}catch(e){cdp_error=e.code||'CDP_NOT_AVAILABLE';}
   return {server:'initialized',cdp_target:'127.0.0.1:9222',cdp_reachable,xero_tabs_count,cdp_error,
-   profile_attested:this.profileAttested,mode:'frontend_directed',scope:'Xero-only',backend_planner:false,tunnel_proven:false,
+   profile_attested:owner.attested===true,owner_attestation:{reason:owner.reason,pid:owner.pid??null,fingerprint:owner.fingerprint??null,observed_at:owner.observedAt??null},mode:'frontend_directed',scope:'Xero-only',backend_planner:false,tunnel_proven:false,
    bulk_fill_max_fields:MAX_FIELDS,write_retry_policy:'readback-before-fallback; no blind replay',wal_durable:this.actionLedger.constructor.name==='DurableActionLedger'};
  }
  async tabs(){const tabs=await retryRead(()=>this.browser.tabs());return tabs.filter(t=>allowedUrl(t.url,{localTests:this.localTests})).map(t=>({id:t.id,title:t.title,url:t.url}));}
@@ -78,7 +84,7 @@ export class BrowserController {
  getSession(sessionId){const s=this.sessions.get(sessionId);if(!s)throw new ControlError('SESSION_UNKNOWN','Bind tab before control',404);
   if(this.now()>s.expiresAt){this.sessions.delete(sessionId);throw new ControlError('SESSION_EXPIRED','Browser bind expired',409);}return s;}
  present(sessionId,snap){return {sessionId,revision:snapshotRevision(snap),tab:{id:this.getSession(sessionId).tabId,url:snap.url,title:snap.title},
-    visibleText:snap.visibleText.slice(0,12000),controls:snap.controls.slice(0,150),viewport:snap.viewport,profileAttested:this.profileAttested};}
+    visibleText:snap.visibleText.slice(0,12000),controls:snap.controls.slice(0,150),viewport:snap.viewport,profileAttested:this.attestationGate?null:this.profileAttested,profileCheck:'current_write_gate'};}
  async observe({sessionId,screenshot=false}){
   const s=this.getSession(sessionId);const snap=await retryRead(()=>this.browser.observe(s.tabId));this.checkSnapshot(snap,s.anchors);s.expiresAt=this.now()+this.sessionTtlMs;
   const result=this.present(sessionId,snap);
@@ -99,7 +105,7 @@ export class BrowserController {
  }
  async act({sessionId,expectedRevision,action,idempotencyKey,expectedPoststate}){
   checkKey(idempotencyKey);checkRevision(expectedRevision);
-  if(!this.profileAttested)throw new ControlError('PROFILE_NOT_ATTESTED','Chrome 9222 profile must be independently attested',403);
+  await this.assertAuthorizedWrite();
   const a=validateAction(action),predicate=validatePredicate(expectedPoststate);
   if(a.kind==='type'){
     const fill=await this.fillFields({sessionId,expectedRevision,idempotencyKey,fields:[{selector:a.selector,text:a.text}]});
@@ -123,7 +129,7 @@ export class BrowserController {
      const after=await retryRead(()=>d.observe());let status='ACTION_OBSERVED_NO_ASSERTION';
      try{this.checkSnapshot(after,s.anchors);if(predicate)status=assertPoststate(after,predicate)?'POSTSTATE_VERIFIED':'POSTSTATE_MISMATCH';}
      catch{status='SCOPE_REVALIDATION_REQUIRED';}
-     return {status,action_id:idempotencyKey,action_kind:a.kind,after:{revision:snapshotRevision(after),url:after.url,title:after.title},
+     return {status,action_id:idempotencyKey,action_kind:a.kind,sessionTag:sha256(sessionId),after:{revision:snapshotRevision(after),url:after.url,title:after.title},
        observation_returned:true,poststate_verified:status==='POSTSTATE_VERIFIED',deduplicated:false};
    });
    await this.actionLedger.commit(idempotencyKey,fingerprint,result);s.expiresAt=this.now()+this.sessionTtlMs;return result;
@@ -131,7 +137,7 @@ export class BrowserController {
  }
  async fillFields({sessionId,expectedRevision,idempotencyKey,fields}){
   checkKey(idempotencyKey);checkRevision(expectedRevision);
-  if(!this.profileAttested)throw new ControlError('PROFILE_NOT_ATTESTED','Chrome 9222 profile must be independently attested',403);
+  await this.assertAuthorizedWrite();
   const requested=validateFields(fields);
   const fingerprint=sha256(JSON.stringify({type:'fill',sessionId,expectedRevision,fields:requested}));
   const cached=await this.actionLedger.get(idempotencyKey);
@@ -180,11 +186,50 @@ export class BrowserController {
       catch{reports.push({index:f.index,status:'FINAL_AUDIT_UNAVAILABLE'});stopped=true;break;}
     }}
     const status=stopped?'PARTIAL_STOP':'FIELD_VALUES_VERIFIED_UNSAVED';
-    return {status,action_id:idempotencyKey,action_kind:'fill_fields',fields:reports,
+    return {status,action_id:idempotencyKey,action_kind:'fill_fields',sessionTag:sha256(sessionId),fields:reports,
       field_values_verified:!stopped&&reports.length===requested.length,poststate_verified:false,
       observation_returned:Boolean(after),after:after?{revision:snapshotRevision(after)}:undefined,deduplicated:false};
    });
    await this.actionLedger.commit(idempotencyKey,fingerprint,result);s.expiresAt=this.now()+this.sessionTtlMs;return result;
+  }finally{this.currentKeys.delete(idempotencyKey);this.currentLocks.delete(s.tabId);await this.actionLedger.prune();}
+ }
+ async verifySaved({sessionId,expectedRevision,idempotencyKey,saveActionKey,fields}){
+  checkKey(idempotencyKey);checkKey(saveActionKey);checkRevision(expectedRevision);
+  const s=this.getSession(sessionId);
+  if(!Array.isArray(fields)||fields.length<1||fields.length>MAX_FIELDS||fields.some(f=>!f||typeof f.selector!=='string'||typeof f.text!=='string'||f.selector.length>400||f.text.length>4096))throw new ControlError('BAD_FIELDS','1-12 exact field selectors and values required');
+  const fingerprint=sha256(JSON.stringify({type:'verify_saved',sessionId,expectedRevision,saveActionKey,fields}));
+  const prior=await this.actionLedger.get(idempotencyKey);
+  if(prior){if(prior.fingerprint!==fingerprint)throw new ControlError('IDEMPOTENCY_CONFLICT','Verification key reused with different inputs',409);return {...prior.result,deduplicated:true};}
+  const saved=await this.actionLedger.get(saveActionKey);
+  if(!saved||saved.result?.status!=='POSTSTATE_VERIFIED'||saved.result?.action_kind!=='click'||saved.result?.sessionTag!==sha256(sessionId))throw new ControlError('SAVE_PROOF_REQUIRED','Same-session Save action with verified poststate required before reload',409);
+  // Reload can discard unsaved values: it is allowed only after the caller supplies a verified Save receipt.
+  await this.assertAuthorizedWrite();
+  if(this.currentLocks.has(s.tabId)||this.currentKeys.has(idempotencyKey))throw new ControlError('TAB_BUSY','Browser tab already controlled',409);
+  this.currentLocks.add(s.tabId);this.currentKeys.add(idempotencyKey);
+  try{
+   const result=await this.driver(s.tabId,async d=>{
+    const before=await retryRead(()=>d.observe());this.checkSnapshot(before,s.anchors);
+    if(snapshotRevision(before)!==expectedRevision)throw new ControlError('STALE_PAGE','Page changed before reload verification',409);
+    if(typeof d.reload!=='function')throw new ControlError('RELOAD_UNSUPPORTED','Browser driver cannot reload and verify persistence',503);
+    await this.actionLedger.reserve(idempotencyKey,fingerprint,'verify_saved');
+    await d.reload();
+    let after;
+    try{after=await retryRead(()=>d.observe());this.checkSnapshot(after,s.anchors);}catch(e){
+      return {status:'SCOPE_REVALIDATION_REQUIRED',action_id:idempotencyKey,action_kind:'verify_saved',sessionTag:sha256(sessionId),poststate_verified:false,observation_returned:false};
+    }
+    const report=[];
+    for(let i=0;i<fields.length;i++){
+      let field;
+      try{field=await retryRead(()=>d.readField(fields[i].selector));}catch(e){report.push({index:i,status:'READBACK_UNAVAILABLE'});break;}
+      report.push({index:i,status:field?.count===1&&field.value===fields[i].text?'PERSISTED_VALUE_MATCH':'PERSISTED_VALUE_MISMATCH'});
+      if(report.at(-1).status!=='PERSISTED_VALUE_MATCH')break;
+    }
+    const ok=report.length===fields.length&&report.every(x=>x.status==='PERSISTED_VALUE_MATCH');
+    return {status:ok?'DRAFT_PERSISTENCE_VERIFIED':'PERSISTENCE_MISMATCH',action_id:idempotencyKey,action_kind:'verify_saved',sessionTag:sha256(sessionId),fields:report,
+      poststate_verified:ok,observation_returned:true,after:{revision:snapshotRevision(after),url:after.url},deduplicated:false};
+   });
+   await this.actionLedger.commit(idempotencyKey,fingerprint,result);
+   s.expiresAt=this.now()+this.sessionTtlMs;return result;
   }finally{this.currentKeys.delete(idempotencyKey);this.currentLocks.delete(s.tabId);await this.actionLedger.prune();}
  }
  release({sessionId}){return{released:this.sessions.delete(sessionId)};}
