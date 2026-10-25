@@ -1,0 +1,9 @@
+{
+  "name": "liming-browser-direct-runtime",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22.5.0"},
+  "scripts": {"test": "node --test test/*.test.mjs", "test:coverage": "node --experimental-test-coverage --test test/*.test.mjs", "test:unit": "node --test test/controller.test.mjs test/mcp.test.mjs test/upgrade.test.mjs", "start": "node src/mcp-server.mjs"},
+  "description": "Frontend-directed local-only MCP browser actuator for Chrome CDP 9222; no external service dependencies"
+}
