@@ -1,0 +1,9 @@
+# v0.5.0 independent validation gates
+
+**Local tests:** `cd runtime && npm run test:coverage` (Linux Chromium available for full suite); `npm run test:unit` for Windows-compatible tests. No Xero account/customer used in source tests.
+
+Regression cases: atomic duplicate resource and action claim across multiple registry instances, alias/Project independent canonical Xero Return keys, restart/no-auto-replay, active-form identity switch with stale old-client header, Reload new-document plus watcher reinstatement, full return section coverage, reused Save receipt rejection, independent Ed25519-signed review vs bad signature, safe new Return provisional-to-exact promotion, TLS X-Forwarded-Proto spoof rejection, durable Gateway request state reconciliation across restart, unsafe generic Confirm/Continue/OK button denial. Test for positive fast uninterrupted input with identityChecks unchanged.
+
+**Critical caveat:** Test coverage and Chrome synthetic CDP PASS do NOT establish real Windows :9222 PID/profile, CCOS-wide single-writer coordination, installed :59422 service, TLS Gateway/Windows Agent, current Project Compiler binding, active ChatGPT MCP resolver exposure, domain placement correctness or actual Xero Draft Save+reload. These must be separately observed and read back. Do not claim DONE from plugin source zip, GitHub Actions or a staged Windows script.
+
+**Live sequence:** (1) current Project context binding (never invent revision), (2) independent real Chrome PID/profile, (3) exclusive CCOS-inclusive browser broker, (4) isolated new local Server and TLS Gateway/Agent, (5) authenticated host tool resolver, (6) synthetic Windows Chrome action, (7) authorised scoped Xero Draft only with independent Xero Tax Skill QA, (8) full Return coverage and signed independent review. Keep Xero Lodge/Submit/Send/Sign/Pay/Delete off limits.

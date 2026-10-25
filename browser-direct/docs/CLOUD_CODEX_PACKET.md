@@ -1,0 +1,11 @@
+# Native Cloud Codex work order — Project 18 (prepared, not launched)
+
+Mode: `PERSONAL_CLOUD_DEV` for code/build/test only. Intended new plugin: `liming-browser-direct` v0.2.0. Reuse the canonical `codex-cloud-execution-worker` 0.3.4, `model-build-test-worker` 0.3.4, `engineering-evidence-first` 0.1.2 and model-system-design-supervisor. Apply Project 19 `robot-action-executor`/`robot-evidence-verifier` exact-target, terminal request ID and independent poststate patterns but NO Android App control or credentials.
+
+Target repository: new **private** browser-control GitHub repository under the currently connected account. The known `chenchang8531-beep/Tax-` repository is public and not an approved location for private host/Tunnel configuration. Suggested branch: `codex/liming-browser-direct-20261025`; obtain a real native Codex Cloud environment/task ID before claiming start. Do not substitute local Codex or a separate paid API. Record observed actual model/effort; historical 2026-10-18/19 model pins are fixtures, not proof of a current run.
+
+Source packet: package ZIP contents `runtime/`, `skills/`, `mcp.json`, `docs/`; no secrets. Objectives: inspect/compile/test current source; add mock CDP transport and real synthetic Chrome acceptance harness; verify streamable HTTP compatibility; negative tests for wrong Chrome profile, stale Xero tab, client switch, off-origin, uncontrolled reload, MFA, high-risk action, uncertain click/retry, leaked outputs and provenance. Update dynamic React/Xero DOM support and frame/shadow DOM only with targeted evidence. Preserve current `main` and Windows Live.
+
+Required output: actual Cloud task ID, repo/branch/commit, changed files, real command logs + negative test receipts, code hashes, source retention and OPEN host-level gates. No merge/deploy/server install, ATO/Xero client writes, send/lodge/submit/pay/sign/delete, or reusing personal Android Tunnel keys. Cloud code test success != Windows/browser/Xero real effect.
+
+The latest ECC reference was pinned to affaan-m/ECC commit `90606c8315ee09cafc303515c5f33024db6b9882`, using its TDD, verification-loop and security-review patterns. No native Cloud Codex task has been launched or proven in this task.
