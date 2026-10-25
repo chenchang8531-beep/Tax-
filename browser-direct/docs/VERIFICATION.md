@@ -1,4 +1,4 @@
-# v0.3.0 testing & evidence gates
+# v0.3.1 testing & evidence gates
 
 1. **Source:** every packaged file matches `SHA256_MANIFEST.json`, no secrets, the single private Plugin ID remains unchanged; all old files retained unless independently reviewed.
 2. **Local unit/negative tests:** explicit browser input actions, batch typing with value-readback, wrong client/period anchors, stale revision, high-risk control/Enter key, changed Windows owner/profile, save/reload mismatch, WAL corruption, uncertain action no replay.

@@ -29,7 +29,7 @@ export async function dispatchMcp(payload,controller) {
   let answer;
   try {
     switch(method){
-      case 'initialize':answer={protocolVersion:'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'liming-browser-direct',version:'0.3.0'}};break;
+      case 'initialize':answer={protocolVersion:'2025-06-18',capabilities:{tools:{listChanged:false}},serverInfo:{name:'liming-browser-direct',version:'0.3.1'}};break;
       case 'ping':answer={};break;
       case 'tools/list':answer={tools:TOOLS};break;
       case 'tools/call':{

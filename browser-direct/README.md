@@ -1,4 +1,4 @@
-# Liming Browser Direct v0.3.0 — Full source model
+# Liming Browser Direct v0.3.1 — Full source model
 
 A **single existing Liming Executive** controls a private Windows Chrome Xero workspace via a separately installed CDP actuator and an independently authenticated outbound reverse tunnel. The transport has **no AI planner** and never edits tax rules. Existing Xero Tax, Accounting and Payroll Skills retain source-backed tax/accounting decisions. **This is real executable source, not proof of a connected Live Xero browser.**
 

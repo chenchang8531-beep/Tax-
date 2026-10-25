@@ -2,7 +2,7 @@
 name: liming-browser-direct
 description: Frontend-controlled Xero Tax/Xero Accounting Chrome browser actions through an ACTUALLY CONNECTED, separately verified Windows CDP 9222 MCP server. Supports page observation, screenshots, exact-tab binding, clicking, typing, selecting, scrolling, dragging, hovering, keys, and poststate readback. Use only for authorized UI actions, not tax reasoning or Cloud Codex task simulation.
 ---
-# Liming Browser Direct v0.3.0
+# Liming Browser Direct v0.3.1
 
 ## Role
 Existing `liming-frontend-executive` remains the sole planning/authority owner. This Skill operates an external actuator, not a second Agent or Xero tax-rule owner. The current `frontend-skill-orchestrator` routes to `xero-au-tax-operations`, `xero-au-accounting-operations`, or `kiwitiao-xero-payroll` for professional judgment and to this controller only for browser UI. Do not infer that the existence of this Skill makes an MCP tool connected.
@@ -25,14 +25,14 @@ Do NOT lodge/submit, send, approve, sign, pay, delete, post payroll/STP, modify 
 
 Project 18 owns Cloud Codex source/build/test via `codex-cloud-execution-worker` and `model-build-test-worker`; Project 19 robot runtime contributes only exact-target/action/readback patterns, not Android App pairing or private Tunnel keys. Use the canonical installed Skills; don't duplicate source or invent Cloud Codex task IDs. See `references/action-contract.md` and plugin-root `docs/`.
 
-## v0.3.0 complete source behavior
+## v0.3.1 complete source behavior
 - Fast path: one CDP transaction per batch; `Input.insertText` sends text in one transport message per field. Verify exact input values after each field and again at batch end.
 - Fallback: retry transient read-only operations only. On no-change-after-fast typing, a single bounded keyed fallback is allowed. If a partial value or uncertain click was applied, halt; do not replay blindly.
 - Durable WAL: Windows server requires `LIMING_ACTION_LEDGER_PATH` set to a locally protected JSONL path. Fsync reservation BEFORE any browser side effect; a restart returns UNCERTAIN rather than replaying. No raw text values stored in this ledger.
 - No browser-act type assertion substitutes for verified form entry: use `browser_fill_fields` for field-level proof and re-observe/reload after separate Save.
 - Security: local simulator Chrome may use about:blank only with explicit `localTests=true`; the production server pins CDP to loopback port 9222, HTTPS Xero origins and an independently attested profile. ECC guidance was used for TDD/verification/security methodology, not installed as a new planning owner.
 
-## Tunnel and deployment (v0.3.0)
+## Tunnel and deployment (v0.3.1)
 - This private Plugin retains the same unique ID. Transport source has three separate owners: cloud `tunnel/gateway.mjs`, Windows `tunnel/agent.mjs`, loopback `runtime/src/mcp-server.mjs`. The latter connects to an existing local :9222 Chrome without publishing CDP. Deploy Gateway as a **single private HTTPS-backed instance** with distinct frontend and agent tokens, not existing CCOS/phone keys; Windows agent polls outbound only. Neither component plans work.
 - `runtime/src/host-attestation.mjs` calls a Windows read-only process-probe at each mutation, requiring an exact manually configured expected Chrome user-data-dir. Production ignores manual `LIMING_PROFILE_ATTESTED` flags.
 - Use `scripts/Install-Windows-Stage.ps1` for isolated versioned staging and manifest checks; `Start-Windows-Controller.ps1` and `Start-Windows-Agent.ps1` require current host evidence and locally DPAPI-protected tokens. Installation is not a success receipt until real process / MCP / Xero readback.

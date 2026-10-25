@@ -1,5 +1,5 @@
 # Read-only current process status. Does not open Xero pages or print any token.
-param([string]$Root=(Join-Path $env:LOCALAPPDATA 'LimingBrowserDirect'),[string]$Version='0.3.0')
+param([string]$Root=(Join-Path $env:LOCALAPPDATA 'LimingBrowserDirect'),[string]$Version='0.3.1')
 $ErrorActionPreference='Stop'
 $probe=Join-Path (Join-Path (Join-Path $Root 'versions') ('v'+$Version)) 'runtime\scripts\inspect-chrome-owner.ps1'
 if(!(Test-Path -LiteralPath $probe)){throw 'PROBE_NOT_STAGED'}

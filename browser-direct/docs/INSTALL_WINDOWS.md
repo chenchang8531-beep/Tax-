@@ -1,9 +1,9 @@
-# Windows staging and live identity controls — v0.3.0
+# Windows staging and live identity controls — v0.3.1
 
 These are Windows PowerShell 5.1 scripts for **side-by-side** non-client engineering. Do not execute them on CCOS or Xero production without current Windows operator authority and a recoverable installation path. No unapproved remote live mutation is part of source acceptance.
 
 1. Install Node v22.5 or later and use a signed/current Chrome with remote debugging already configured at loopback :9222. Run a local read-only `Get-NetTCPConnection -LocalPort 9222` and `Get-CimInstance Win32_Process` to obtain current owning PID and `--user-data-dir`, not yesterday's cached debugging state. Verify intended Chrome profile physically. Do not inspect cookies, passwords or raw client data. Existing CCOS KeepAlive may refresh managed Xero tabs, so isolate a **synthetic test tab** and verify one-writer ownership before any real Draft.
-2. In Windows PowerShell, stage the v0.3.0 package with `./scripts/Install-Windows-Stage.ps1 -ZipPath <downloaded ZIP file>`. The script checks the exact manifest SHA-256 of every source file, refuses to overwrite an existing version, and returns `STAGED_ONLY` — it does not launch or configure Chrome, CCOS or the Tunnel.
+2. In Windows PowerShell, stage the v0.3.1 package with `./scripts/Install-Windows-Stage.ps1 -ZipPath <downloaded ZIP file>`. The script checks the exact manifest SHA-256 of every source file, refuses to overwrite an existing version, and returns `STAGED_ONLY` — it does not launch or configure Chrome, CCOS or the Tunnel.
 3. Launch local Server with `./scripts/Start-Windows-Controller.ps1 -ExpectedUserDataDir <exact verified dir> -ExpectedProfileDirectory <profile if any> -ExpectedChromeExe <exact Chrome.exe if known>`. The Server binds only `127.0.0.1:59422`, uses a locally generated token encrypted by Windows DPAPI, and fsyncs action reservations to its own protected user-local WAL before UI effects. It checks **current Windows process identity every write** and will refuse writes on missing/changed profile, regardless of any manually set flag. No credentials or raw form values enter the action WAL.
 4. With the private Gateway deployed and its distinct Agent token obtained, execute `./scripts/Save-Windows-Agent-Token.ps1` and then `./scripts/Start-Windows-Agent.ps1 -GatewayUrl <verified HTTPS address> -AgentId <exact unique agent ID>`. The agent connects outbound only. Never publish 9222, 59422 or the agent's secret to GitHub/Plugin source.
 5. Verify with `./scripts/Verify-Windows-Controller.ps1` (read-only process/port metadata), then authenticated local `/readyz` and Gateway `/status` checks. `server_ready=true` is not `write_ready=true`; `agent_online=true` is not ChatGPT tool exposure. A real host tool listing and authenticated remote read-only MCP request are required before any UI action.
@@ -11,7 +11,7 @@ These are Windows PowerShell 5.1 scripts for **side-by-side** non-client enginee
 
 ## Rollback
 
-Previous `v0.2.1` and `v0.2.0` plugin releases are retained in platform history. The Windows installer stages `versions/v0.3.0` without touching prior files. To roll back, stop **only the confirmed new service/agent PIDs**, do not kill Chrome or CCOS, then select the old version and restore original authenticated binding. A dangling WAL RESERVE means UNKNOWN outcome and must never be discarded to force a retry. Do not delete rollback files, revoke keys or modify the existing CCOS tunnel automatically.
+Previous `v0.2.1` and `v0.2.0` plugin releases are retained in platform history. The Windows installer stages `versions/v0.3.1` without touching prior files. To roll back, stop **only the confirmed new service/agent PIDs**, do not kill Chrome or CCOS, then select the old version and restore original authenticated binding. A dangling WAL RESERVE means UNKNOWN outcome and must never be discarded to force a retry. Do not delete rollback files, revoke keys or modify the existing CCOS tunnel automatically.
 
 ## Host blockers
 
